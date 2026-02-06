@@ -12,17 +12,16 @@ export default function Home() {
       <main className="flex-1 flex flex-col items-center justify-center px-4">
         <div className="max-w-2xl mx-auto text-center">
           {/* Logo / Icon */}
-          <div className="w-20 h-20 mx-auto mb-8 bg-yellow-500 rounded-xl flex items-center justify-center shadow-lg shadow-yellow-500/20">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              className="w-10 h-10 text-gray-900"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
+          <div className="w-20 h-20 mx-auto mb-8 rounded-xl flex items-center justify-center shadow-lg shadow-yellow-500/20 bg-gray-900 border border-gray-700">
+            <svg viewBox="0 0 32 32" fill="none" className="w-14 h-14">
+              {/* Vault door rings */}
+              <circle cx="16" cy="16" r="13" stroke="#fbbf24" strokeWidth="2" />
+              <circle cx="16" cy="16" r="9" stroke="#fbbf24" strokeWidth="1.5" opacity="0.5" />
+              {/* Crosshair lines */}
+              <line x1="16" y1="4" x2="16" y2="28" stroke="#fbbf24" strokeWidth="1" opacity="0.3" />
+              <line x1="4" y1="16" x2="28" y2="16" stroke="#fbbf24" strokeWidth="1" opacity="0.3" />
+              {/* Checkmark */}
+              <polyline points="10,16 14,20 22,11" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
 
