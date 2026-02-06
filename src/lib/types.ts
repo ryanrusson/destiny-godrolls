@@ -96,6 +96,12 @@ export interface ManifestItemDefinition {
 
 // --- Weapon Analysis Types ---
 
+export interface WeaponStat {
+  statHash: number;
+  name: string;
+  value: number;
+}
+
 export interface WeaponRoll {
   itemInstanceId: string;
   itemHash: number;
@@ -107,6 +113,7 @@ export interface WeaponRoll {
   typeName: string;
   damageType: number;
   powerLevel: number;
+  stats: WeaponStat[];
   perks: PerkColumn[];
   isGodRoll: boolean;
   isRecommended: boolean;
@@ -114,6 +121,12 @@ export interface WeaponRoll {
   matchedPerkCount: number;
   location: ItemLocation;
   characterId?: string;
+  /** Fallback perk-based rating when no wishlist coverage exists */
+  fallbackRating?: "great" | "good" | "ok" | "none";
+  fallbackScore?: number;
+  fallbackMaxScore?: number;
+  /** True when this weapon had no wishlist entries and was scored via fallback */
+  usedFallback?: boolean;
 }
 
 export interface PerkColumn {
@@ -225,3 +238,22 @@ export const ITEM_SUB_TYPES = {
 // Tier type values
 export const TIER_LEGENDARY = 5;
 export const TIER_EXOTIC = 6;
+
+// Weapon stat hashes (display order)
+export const WEAPON_STAT_ORDER: { hash: number; name: string }[] = [
+  { hash: 4284893193, name: "RPM" },
+  { hash: 4043523819, name: "Impact" },
+  { hash: 1240592695, name: "Range" },
+  { hash: 155624089, name: "Stability" },
+  { hash: 943549884, name: "Handling" },
+  { hash: 4188031367, name: "Reload Speed" },
+  { hash: 1345609583, name: "Aim Assistance" },
+  { hash: 3555269338, name: "Zoom" },
+  { hash: 2714457168, name: "Airborne Effectiveness" },
+  { hash: 3614673599, name: "Blast Radius" },
+  { hash: 2523465841, name: "Velocity" },
+  { hash: 447667954, name: "Draw Time" },
+  { hash: 2961396640, name: "Charge Time" },
+  { hash: 3871231066, name: "Magazine" },
+  { hash: 2837207746, name: "Swing Speed" },
+];

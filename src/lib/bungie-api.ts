@@ -73,7 +73,9 @@ export async function getMembershipData(
 // 205 = CharacterEquipment
 // 300 = ItemInstances
 // 304 = ItemSockets
-const PROFILE_COMPONENTS = "102,200,201,205,300,304";
+// 305 = ItemStats
+// 310 = ItemReusablePlugs (all available perks per socket)
+const PROFILE_COMPONENTS = "102,200,201,205,300,304,305,310";
 
 export interface ProfileResponse {
   profileInventory: {
@@ -102,6 +104,12 @@ export interface ProfileResponse {
     };
     sockets: {
       data: Record<string, DestinyItemSocketsComponent>;
+    };
+    reusablePlugs: {
+      data: Record<string, { plugs: Record<string, Array<{ plugItemHash: number; canInsert: boolean; enabled: boolean }>> }>;
+    };
+    stats: {
+      data: Record<string, { stats: Record<string, { statHash: number; value: number }> }>;
     };
   };
 }

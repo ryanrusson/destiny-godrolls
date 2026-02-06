@@ -1,6 +1,6 @@
 "use client";
 
-import { WeaponRoll, DAMAGE_TYPES } from "@/lib/types";
+import { WeaponRoll, PerkInfo, DAMAGE_TYPES } from "@/lib/types";
 import { bungieIconUrl } from "@/lib/bungie-api";
 
 interface WeaponCardProps {
@@ -14,6 +14,57 @@ const locationLabels: Record<string, string> = {
   equipped: "Equipped",
   postmaster: "Postmaster",
 };
+
+const perkColumnLabels: Record<number, string> = {
+  0: "Intrinsic",
+  1: "Barrel / Sight",
+  2: "Magazine",
+  3: "Trait 1",
+  4: "Trait 2",
+};
+
+function statBarColor(value: number): string {
+  if (value >= 80) return "bg-green-500";
+  if (value >= 60) return "bg-blue-400";
+  if (value >= 40) return "bg-yellow-500";
+  return "bg-red-400";
+}
+
+function PerkIcon({ perk, isSelected, size = "sm" }: { perk: PerkInfo; isSelected: boolean; size?: "sm" | "md" }) {
+  const sizeClass = size === "md" ? "w-8 h-8" : "w-6 h-6";
+
+  const borderClass = isSelected
+    ? perk.isWishlistPerk
+      ? "ring-2 ring-yellow-500 border-yellow-600"
+      : "ring-2 ring-white/60 border-white/40"
+    : perk.isWishlistPerk
+      ? "ring-1 ring-yellow-600/50 border-yellow-700/30"
+      : "border-gray-700/50";
+
+  const opacityClass = isSelected ? "opacity-100" : "opacity-40 hover:opacity-70";
+
+  return (
+    <div
+      className={`relative ${sizeClass} rounded border ${borderClass} ${opacityClass} transition-opacity bg-gray-800 shrink-0`}
+      title={`${perk.name}${perk.description ? `: ${perk.description}` : ""}`}
+    >
+      {perk.icon ? (
+        <img
+          src={perk.icon.startsWith("http") ? perk.icon : bungieIconUrl(perk.icon)}
+          alt={perk.name}
+          className={`${sizeClass} rounded`}
+        />
+      ) : (
+        <div className={`${sizeClass} rounded flex items-center justify-center`}>
+          <div className="w-2 h-2 rounded-full bg-gray-500" />
+        </div>
+      )}
+      {perk.isWishlistPerk && (
+        <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full border border-gray-900" />
+      )}
+    </div>
+  );
+}
 
 export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
   const damageInfo = DAMAGE_TYPES[roll.damageType] || DAMAGE_TYPES[0];
@@ -66,15 +117,20 @@ export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
             </span>
           ) : roll.isGodRoll ? (
             <span className="text-xs font-bold px-2 py-0.5 rounded bg-yellow-900/60 text-yellow-300 border border-yellow-700/50">
-              GOD ROLL
+              {roll.usedFallback ? "GREAT ROLL" : "GOD ROLL"}
             </span>
           ) : roll.isRecommended ? (
             <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-900/60 text-green-300 border border-green-800/50">
-              KEEP
+              {roll.usedFallback ? "GOOD ROLL" : "KEEP"}
             </span>
           ) : (
             <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-900/40 text-green-400 border border-green-800/40">
               KEEP (BEST)
+            </span>
+          )}
+          {roll.usedFallback && roll.fallbackRating && (
+            <span className="text-[10px] text-gray-500 italic">
+              perk score: {roll.fallbackScore}/{roll.fallbackMaxScore}
             </span>
           )}
           <span className="text-xs text-gray-500">
@@ -91,44 +147,81 @@ export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
         <span className="text-xs text-yellow-500 font-medium">{roll.powerLevel}</span>
       </div>
 
-      {/* Perks */}
-      <div className="space-y-1.5">
+      {/* Weapon Stats */}
+      {roll.stats.length > 0 && (
+        <div className="mb-3 space-y-1">
+          {roll.stats.map((stat) => (
+            <div key={stat.statHash} className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 w-24 text-right shrink-0">
+                {stat.name}
+              </span>
+              <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${statBarColor(stat.value)}`}
+                  style={{ width: `${Math.min(stat.value, 100)}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-gray-400 w-6 text-right tabular-nums">
+                {stat.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Perks Grid */}
+      <div className="space-y-2">
         {roll.perks.map((col) => {
-          const perk = col.selectedPerk;
-          if (!perk) return null;
+          const selected = col.selectedPerk;
+          if (!selected) return null;
+          const hasMultiple = col.activePerks.length > 1;
 
           return (
-            <div
-              key={col.columnIndex}
-              className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${
-                perk.isWishlistPerk
-                  ? "bg-yellow-900/30 border border-yellow-800/40"
-                  : "bg-gray-800/50"
-              }`}
-            >
-              {perk.icon ? (
-                <img
-                  src={perk.icon.startsWith("http") ? perk.icon : bungieIconUrl(perk.icon)}
-                  alt={perk.name}
-                  className="w-5 h-5 rounded-sm"
-                />
-              ) : (
-                <div className="w-5 h-5 rounded-sm bg-gray-700 flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full bg-gray-500" />
+            <div key={col.columnIndex} className="bg-gray-800/30 rounded px-2 py-1.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-[10px] text-gray-500 uppercase">
+                  {perkColumnLabels[col.columnIndex] || `Perk ${col.columnIndex}`}
+                </span>
+                {selected.isWishlistPerk && (
+                  <svg viewBox="0 0 24 24" className="w-3 h-3 text-yellow-500" fill="currentColor">
+                    <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                  </svg>
+                )}
+              </div>
+
+              {/* Perk icons row */}
+              {hasMultiple && (
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {col.activePerks.map((perk) => (
+                    <PerkIcon
+                      key={perk.perkHash}
+                      perk={perk}
+                      isSelected={perk.perkHash === selected.perkHash}
+                    />
+                  ))}
                 </div>
               )}
-              <span
-                className={`font-medium ${
-                  perk.isWishlistPerk ? "text-yellow-300" : "text-gray-300"
-                }`}
-              >
-                {perk.name}
-              </span>
-              {perk.isWishlistPerk && (
-                <svg viewBox="0 0 24 24" className="w-3 h-3 text-yellow-500 ml-auto" fill="currentColor">
-                  <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-                </svg>
-              )}
+
+              {/* Selected perk details */}
+              <div className="flex items-center gap-2">
+                {!hasMultiple && (
+                  <PerkIcon perk={selected} isSelected size="md" />
+                )}
+                <div className="min-w-0">
+                  <span
+                    className={`text-xs font-medium ${
+                      selected.isWishlistPerk ? "text-yellow-300" : "text-gray-300"
+                    }`}
+                  >
+                    {selected.name}
+                  </span>
+                  {selected.description && (
+                    <p className="text-[10px] text-gray-500 leading-tight mt-0.5">
+                      {selected.description}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           );
         })}
