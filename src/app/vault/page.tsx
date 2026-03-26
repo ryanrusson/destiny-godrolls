@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import StatsBar from "@/components/StatsBar";
 import DuplicateGroup from "@/components/DuplicateGroup";
-import { VaultAnalysis } from "@/lib/types";
+import { VaultAnalysis, DAMAGE_TYPES } from "@/lib/types";
 import { DEMO_ANALYSIS } from "@/lib/demo-data";
 
 type FilterMode = "all" | "junk" | "godrolls";
@@ -18,6 +18,9 @@ function VaultContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterMode>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [weaponTypeFilter, setWeaponTypeFilter] = useState<string>("all");
+  const [damageTypeFilter, setDamageTypeFilter] = useState<string>("all");
   const [displayName, setDisplayName] = useState<string>("");
 
   const fetchData = useCallback(async () => {
@@ -59,10 +62,38 @@ function VaultContent() {
     fetchData();
   }, [fetchData]);
 
+  // Derive unique weapon types and damage types for dropdown options
+  const weaponTypes = analysis
+    ? [...new Set(analysis.duplicateGroups.map((g) => g.weaponType))].sort()
+    : [];
+  const damageTypes = analysis
+    ? [...new Set(analysis.duplicateGroups.map((g) => g.damageType))].sort()
+    : [];
+
   const filteredGroups = analysis?.duplicateGroups.filter((group) => {
-    if (filter === "junk") return group.junkRecommendations.length > 0;
-    if (filter === "godrolls")
-      return group.rolls.some((r) => r.isGodRoll);
+    // Status filter
+    if (filter === "junk" && group.junkRecommendations.length === 0) return false;
+    if (filter === "godrolls" && !group.rolls.some((r) => r.isGodRoll)) return false;
+
+    // Text search
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const nameMatch = group.weaponName.toLowerCase().includes(q);
+      const typeMatch = group.weaponType.toLowerCase().includes(q);
+      const perkMatch = group.rolls.some((r) =>
+        r.perks.some((col) =>
+          col.activePerks.some((p) => p.name.toLowerCase().includes(q))
+        )
+      );
+      if (!nameMatch && !typeMatch && !perkMatch) return false;
+    }
+
+    // Weapon type dropdown
+    if (weaponTypeFilter !== "all" && group.weaponType !== weaponTypeFilter) return false;
+
+    // Damage type dropdown
+    if (damageTypeFilter !== "all" && String(group.damageType) !== damageTypeFilter) return false;
+
     return true;
   });
 
@@ -134,65 +165,15 @@ function VaultContent() {
               <StatsBar analysis={analysis} />
             </div>
 
-            {/* Filter Bar */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setFilter("all")}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    filter === "all"
-                      ? "bg-gray-700 text-white"
-                      : "text-gray-500 hover:text-gray-300"
-                  }`}
-                >
-                  All Duplicates ({analysis.duplicateGroups.length})
-                </button>
-                <button
-                  onClick={() => setFilter("junk")}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    filter === "junk"
-                      ? "bg-red-900/50 text-red-300"
-                      : "text-gray-500 hover:text-gray-300"
-                  }`}
-                >
-                  Has Junk (
-                  {
-                    analysis.duplicateGroups.filter(
-                      (g) => g.junkRecommendations.length > 0
-                    ).length
-                  }
-                  )
-                </button>
-                <button
-                  onClick={() => setFilter("godrolls")}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    filter === "godrolls"
-                      ? "bg-yellow-900/50 text-yellow-300"
-                      : "text-gray-500 hover:text-gray-300"
-                  }`}
-                >
-                  God Rolls (
-                  {
-                    analysis.duplicateGroups.filter((g) =>
-                      g.rolls.some((r) => r.isGodRoll)
-                    ).length
-                  }
-                  )
-                </button>
-              </div>
-
-              {!isDemo && (
-                <button
-                  onClick={() => {
-                    setLoading(true);
-                    setAnalysis(null);
-                    fetchData();
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
-                >
+            {/* Search & Filter Bar */}
+            <div className="mb-6 space-y-3">
+              {/* Search + Dropdowns row */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* Search field */}
+                <div className="relative flex-1">
                   <svg
                     viewBox="0 0 24 24"
-                    className="w-4 h-4"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="2"
@@ -200,12 +181,139 @@ function VaultContent() {
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"
+                      d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
                     />
                   </svg>
-                  Refresh
-                </button>
-              )}
+                  <input
+                    type="text"
+                    placeholder="Search weapons or perks..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-600 focus:ring-1 focus:ring-gray-600 transition-colors"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                {/* Weapon type dropdown */}
+                <select
+                  value={weaponTypeFilter}
+                  onChange={(e) => setWeaponTypeFilter(e.target.value)}
+                  className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-gray-600 focus:ring-1 focus:ring-gray-600 transition-colors cursor-pointer"
+                >
+                  <option value="all">All Weapon Types</option>
+                  {weaponTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Damage type dropdown */}
+                <select
+                  value={damageTypeFilter}
+                  onChange={(e) => setDamageTypeFilter(e.target.value)}
+                  className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-gray-600 focus:ring-1 focus:ring-gray-600 transition-colors cursor-pointer"
+                >
+                  <option value="all">All Elements</option>
+                  {damageTypes.map((dt) => (
+                    <option key={dt} value={String(dt)}>
+                      {DAMAGE_TYPES[dt]?.name || `Type ${dt}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status filter tabs + refresh */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setFilter("all")}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      filter === "all"
+                        ? "bg-gray-700 text-white"
+                        : "text-gray-500 hover:text-gray-300"
+                    }`}
+                  >
+                    All Duplicates ({analysis.duplicateGroups.length})
+                  </button>
+                  <button
+                    onClick={() => setFilter("junk")}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      filter === "junk"
+                        ? "bg-red-900/50 text-red-300"
+                        : "text-gray-500 hover:text-gray-300"
+                    }`}
+                  >
+                    Has Junk (
+                    {
+                      analysis.duplicateGroups.filter(
+                        (g) => g.junkRecommendations.length > 0
+                      ).length
+                    }
+                    )
+                  </button>
+                  <button
+                    onClick={() => setFilter("godrolls")}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      filter === "godrolls"
+                        ? "bg-yellow-900/50 text-yellow-300"
+                        : "text-gray-500 hover:text-gray-300"
+                    }`}
+                  >
+                    God Rolls (
+                    {
+                      analysis.duplicateGroups.filter((g) =>
+                        g.rolls.some((r) => r.isGodRoll)
+                      ).length
+                    }
+                    )
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {/* Result count */}
+                  {(searchQuery || weaponTypeFilter !== "all" || damageTypeFilter !== "all") && (
+                    <span className="text-xs text-gray-500">
+                      {filteredGroups?.length || 0} result{filteredGroups?.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+
+                  {!isDemo && (
+                    <button
+                      onClick={() => {
+                        setLoading(true);
+                        setAnalysis(null);
+                        fetchData();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"
+                        />
+                      </svg>
+                      Refresh
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Duplicate Groups */}
@@ -218,10 +326,25 @@ function VaultContent() {
             ) : (
               <div className="text-center py-16">
                 <p className="text-gray-500">
-                  {filter === "all"
-                    ? "No duplicate weapons found in your vault!"
-                    : "No weapons match this filter."}
+                  {searchQuery || weaponTypeFilter !== "all" || damageTypeFilter !== "all"
+                    ? `No weapons match "${searchQuery || ""}"${weaponTypeFilter !== "all" ? ` in ${weaponTypeFilter}` : ""}${damageTypeFilter !== "all" ? ` (${DAMAGE_TYPES[Number(damageTypeFilter)]?.name || ""})` : ""}`
+                    : filter === "all"
+                      ? "No duplicate weapons found in your vault!"
+                      : "No weapons match this filter."}
                 </p>
+                {(searchQuery || weaponTypeFilter !== "all" || damageTypeFilter !== "all") && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setWeaponTypeFilter("all");
+                      setDamageTypeFilter("all");
+                      setFilter("all");
+                    }}
+                    className="mt-3 text-sm text-gray-400 hover:text-gray-200 underline"
+                  >
+                    Clear all filters
+                  </button>
+                )}
               </div>
             )}
 
