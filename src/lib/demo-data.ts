@@ -778,16 +778,167 @@ const refurbishedGroup: DuplicateGroup = {
   junkRecommendations: ["demo-014"],
 };
 
+// Single weapons (no duplicates) for "All Weapons" view
+const aceOfSpades: WeaponRoll = makeRoll({
+  itemInstanceId: "demo-single-001",
+  itemHash: 347366834,
+  name: "Ace of Spades",
+  typeName: "Hand Cannon",
+  tierName: "Exotic",
+  damageType: 1,
+  powerLevel: 1815,
+  isGodRoll: true,
+  isRecommended: true,
+  matchedPerkCount: 0,
+  location: "equipped",
+  characterId: "char-1",
+  perks: [],
+});
+
+const aceGroup: DuplicateGroup = {
+  weaponHash: 347366834,
+  weaponName: "Ace of Spades",
+  weaponIcon: "",
+  weaponType: "Hand Cannon",
+  damageType: 1,
+  rolls: [aceOfSpades],
+  keepRecommendations: ["demo-single-001"],
+  junkRecommendations: [],
+};
+
+const deliverance: WeaponRoll = makeRoll({
+  itemInstanceId: "demo-single-002",
+  itemHash: 768621510,
+  name: "Deliverance",
+  typeName: "Fusion Rifle",
+  damageType: 6, // Stasis
+  powerLevel: 1810,
+  isGodRoll: true,
+  isRecommended: true,
+  matchedPerkCount: 4,
+  wishlistNotes: ["PvP God Roll - Perpetual Motion + Chill Clip"],
+  location: "vault",
+  perks: [],
+});
+
+const deliveranceGroup: DuplicateGroup = {
+  weaponHash: 768621510,
+  weaponName: "Deliverance",
+  weaponIcon: "",
+  weaponType: "Fusion Rifle",
+  damageType: 6,
+  rolls: [deliverance],
+  keepRecommendations: ["demo-single-002"],
+  junkRecommendations: [],
+};
+
+const osteoStriga: WeaponRoll = makeRoll({
+  itemInstanceId: "demo-single-003",
+  itemHash: 46524085,
+  name: "Osteo Striga",
+  typeName: "Submachine Gun",
+  tierName: "Exotic",
+  damageType: 1,
+  powerLevel: 1812,
+  isGodRoll: true,
+  isRecommended: true,
+  matchedPerkCount: 0,
+  location: "vault",
+  perks: [],
+});
+
+const osteoGroup: DuplicateGroup = {
+  weaponHash: 46524085,
+  weaponName: "Osteo Striga",
+  weaponIcon: "",
+  weaponType: "Submachine Gun",
+  damageType: 1,
+  rolls: [osteoStriga],
+  keepRecommendations: ["demo-single-003"],
+  junkRecommendations: [],
+};
+
+const taipan: WeaponRoll = makeRoll({
+  itemInstanceId: "demo-single-004",
+  itemHash: 1911060537,
+  name: "Taipan-4fr",
+  typeName: "Linear Fusion Rifle",
+  damageType: 7, // Strand
+  powerLevel: 1808,
+  isGodRoll: false,
+  isRecommended: true,
+  matchedPerkCount: 3,
+  wishlistNotes: ["Solid DPS option"],
+  location: "vault",
+  perks: [],
+});
+
+const taipanGroup: DuplicateGroup = {
+  weaponHash: 1911060537,
+  weaponName: "Taipan-4fr",
+  weaponIcon: "",
+  weaponType: "Linear Fusion Rifle",
+  damageType: 7,
+  rolls: [taipan],
+  keepRecommendations: ["demo-single-004"],
+  junkRecommendations: [],
+};
+
+const witherhoard: WeaponRoll = makeRoll({
+  itemInstanceId: "demo-single-005",
+  itemHash: 14194600,
+  name: "Witherhoard",
+  typeName: "Grenade Launcher",
+  tierName: "Exotic",
+  damageType: 1,
+  powerLevel: 1810,
+  isGodRoll: true,
+  isRecommended: true,
+  matchedPerkCount: 0,
+  location: "vault",
+  perks: [],
+});
+
+const witherhoardGroup: DuplicateGroup = {
+  weaponHash: 14194600,
+  weaponName: "Witherhoard",
+  weaponIcon: "",
+  weaponType: "Grenade Launcher",
+  damageType: 1,
+  rolls: [witherhoard],
+  keepRecommendations: ["demo-single-005"],
+  junkRecommendations: [],
+};
+
+// All duplicate groups
+const allDuplicateGroups = [
+  cataclysmicGroup,
+  austringerGroup,
+  refurbishedGroup,
+  funnelwebGroup,
+  calusGroup,
+  forbearanceGroup,
+];
+
+// All weapon groups (duplicates + singles), sorted alphabetically
+const allWeaponGroups = [
+  aceGroup,
+  austringerGroup,
+  calusGroup,
+  cataclysmicGroup,
+  deliveranceGroup,
+  forbearanceGroup,
+  funnelwebGroup,
+  osteoGroup,
+  refurbishedGroup,
+  taipanGroup,
+  witherhoardGroup,
+];
+
 export const DEMO_ANALYSIS: VaultAnalysis = {
   totalWeapons: 49,
-  duplicateGroups: [
-    cataclysmicGroup,
-    austringerGroup,
-    refurbishedGroup,
-    funnelwebGroup,
-    calusGroup,
-    forbearanceGroup,
-  ],
+  duplicateGroups: allDuplicateGroups,
+  allWeaponGroups,
   godRollCount: 5,
   junkCount: 8,
   keepCount: 6,
