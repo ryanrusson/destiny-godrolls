@@ -248,11 +248,12 @@ export async function analyzeProfile(
     grouped.set(roll.itemHash, existing);
   }
 
-  // Build duplicate groups (weapons you have 2+ of)
+  // Build weapon groups (both duplicates and singles)
   const duplicateGroups: DuplicateGroup[] = [];
+  const allWeaponGroups: DuplicateGroup[] = [];
 
   for (const [weaponHash, rolls] of grouped) {
-    if (rolls.length < 2) continue;
+    const isDuplicate = rolls.length >= 2;
 
     const keepIds: string[] = [];
     const junkIds: string[] = [];
@@ -296,7 +297,7 @@ export async function analyzeProfile(
       return b.powerLevel - a.powerLevel;
     });
 
-    duplicateGroups.push({
+    const group: DuplicateGroup = {
       weaponHash,
       weaponName: rolls[0].name,
       weaponIcon: rolls[0].icon,
@@ -305,7 +306,12 @@ export async function analyzeProfile(
       rolls,
       keepRecommendations: keepIds,
       junkRecommendations: junkIds,
-    });
+    };
+
+    allWeaponGroups.push(group);
+    if (isDuplicate) {
+      duplicateGroups.push(group);
+    }
   }
 
   // Sort groups by number of junkable items (most junkable first)
@@ -313,9 +319,13 @@ export async function analyzeProfile(
     (a, b) => b.junkRecommendations.length - a.junkRecommendations.length
   );
 
+  // Sort all weapons alphabetically by name
+  allWeaponGroups.sort((a, b) => a.weaponName.localeCompare(b.weaponName));
+
   return {
     totalWeapons: weaponRolls.length,
     duplicateGroups,
+    allWeaponGroups,
     godRollCount: weaponRolls.filter((w) => w.isGodRoll).length,
     junkCount: duplicateGroups.reduce(
       (sum, g) => sum + g.junkRecommendations.length,

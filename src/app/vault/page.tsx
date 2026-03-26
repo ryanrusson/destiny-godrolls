@@ -21,6 +21,7 @@ function VaultContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [weaponTypeFilter, setWeaponTypeFilter] = useState<string>("all");
   const [damageTypeFilter, setDamageTypeFilter] = useState<string>("all");
+  const [showAllWeapons, setShowAllWeapons] = useState(false);
   const [displayName, setDisplayName] = useState<string>("");
 
   const fetchData = useCallback(async () => {
@@ -62,15 +63,20 @@ function VaultContent() {
     fetchData();
   }, [fetchData]);
 
+  // Choose which groups to display based on toggle
+  const baseGroups = showAllWeapons
+    ? analysis?.allWeaponGroups
+    : analysis?.duplicateGroups;
+
   // Derive unique weapon types and damage types for dropdown options
-  const weaponTypes = analysis
-    ? [...new Set(analysis.duplicateGroups.map((g) => g.weaponType))].sort()
+  const weaponTypes = baseGroups
+    ? [...new Set(baseGroups.map((g) => g.weaponType))].sort()
     : [];
-  const damageTypes = analysis
-    ? [...new Set(analysis.duplicateGroups.map((g) => g.damageType))].sort()
+  const damageTypes = baseGroups
+    ? [...new Set(baseGroups.map((g) => g.damageType))].sort()
     : [];
 
-  const filteredGroups = analysis?.duplicateGroups.filter((group) => {
+  const filteredGroups = baseGroups?.filter((group) => {
     // Status filter
     if (filter === "junk" && group.junkRecommendations.length === 0) return false;
     if (filter === "godrolls" && !group.rolls.some((r) => r.isGodRoll)) return false;
@@ -230,6 +236,18 @@ function VaultContent() {
                     </option>
                   ))}
                 </select>
+
+                {/* All weapons toggle */}
+                <button
+                  onClick={() => setShowAllWeapons(!showAllWeapons)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${
+                    showAllWeapons
+                      ? "bg-blue-900/50 border-blue-700 text-blue-300"
+                      : "bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  {showAllWeapons ? "All Weapons" : "Duplicates Only"}
+                </button>
               </div>
 
               {/* Status filter tabs + refresh */}
@@ -243,7 +261,7 @@ function VaultContent() {
                         : "text-gray-500 hover:text-gray-300"
                     }`}
                   >
-                    All Duplicates ({analysis.duplicateGroups.length})
+                    {showAllWeapons ? "All Weapons" : "All Duplicates"} ({baseGroups?.length || 0})
                   </button>
                   <button
                     onClick={() => setFilter("junk")}
@@ -255,9 +273,9 @@ function VaultContent() {
                   >
                     Has Junk (
                     {
-                      analysis.duplicateGroups.filter(
+                      baseGroups?.filter(
                         (g) => g.junkRecommendations.length > 0
-                      ).length
+                      ).length || 0
                     }
                     )
                   </button>
@@ -271,9 +289,9 @@ function VaultContent() {
                   >
                     God Rolls (
                     {
-                      analysis.duplicateGroups.filter((g) =>
+                      baseGroups?.filter((g) =>
                         g.rolls.some((r) => r.isGodRoll)
-                      ).length
+                      ).length || 0
                     }
                     )
                   </button>
@@ -329,7 +347,9 @@ function VaultContent() {
                   {searchQuery || weaponTypeFilter !== "all" || damageTypeFilter !== "all"
                     ? `No weapons match "${searchQuery || ""}"${weaponTypeFilter !== "all" ? ` in ${weaponTypeFilter}` : ""}${damageTypeFilter !== "all" ? ` (${DAMAGE_TYPES[Number(damageTypeFilter)]?.name || ""})` : ""}`
                     : filter === "all"
-                      ? "No duplicate weapons found in your vault!"
+                      ? showAllWeapons
+                        ? "No weapons found in your vault!"
+                        : "No duplicate weapons found in your vault!"
                       : "No weapons match this filter."}
                 </p>
                 {(searchQuery || weaponTypeFilter !== "all" || damageTypeFilter !== "all") && (

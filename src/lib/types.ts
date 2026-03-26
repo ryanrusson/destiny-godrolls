@@ -160,6 +160,7 @@ export interface DuplicateGroup {
 export interface VaultAnalysis {
   totalWeapons: number;
   duplicateGroups: DuplicateGroup[];
+  allWeaponGroups: DuplicateGroup[]; // All weapons including singles
   godRollCount: number;
   junkCount: number;
   keepCount: number;
