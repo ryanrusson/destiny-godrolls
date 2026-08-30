@@ -182,6 +182,8 @@ export interface WishlistDatabase {
   title: string;
   description: string;
   lastUpdated: Date;
+  /** Enhanced trait hash -> base trait hash, for normalizing crafted/adept perks */
+  enhancedToBase?: Map<number, number>;
 }
 
 // --- Session Types ---

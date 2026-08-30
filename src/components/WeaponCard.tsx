@@ -162,6 +162,14 @@ export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
               KEEP (BEST)
             </span>
           )}
+          {roll.usedFallback && (
+            <span
+              className="text-[9px] font-medium uppercase px-1.5 py-0.5 rounded border bg-purple-900/40 text-purple-300/90 border-purple-800/40"
+              title="This weapon has no entries in the Voltron community wishlist; it was rated by generic perk quality instead."
+            >
+              Not in wishlist
+            </span>
+          )}
           {roll.usedFallback && roll.fallbackRating && (
             <span className="text-[10px] text-gray-500 italic">
               perk score: {roll.fallbackScore}/{roll.fallbackMaxScore}

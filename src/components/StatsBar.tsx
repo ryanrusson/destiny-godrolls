@@ -7,6 +7,11 @@ interface StatsBarProps {
 }
 
 export default function StatsBar({ analysis }: StatsBarProps) {
+  // Weapon models with no voltron wishlist coverage (scored via fallback perks)
+  const noWishlistCount = (analysis.allWeaponGroups ?? []).filter((g) =>
+    g.rolls.some((r) => r.usedFallback)
+  ).length;
+
   const stats = [
     {
       label: "Total Weapons",
@@ -38,10 +43,16 @@ export default function StatsBar({ analysis }: StatsBarProps) {
       color: "text-green-400",
       bg: "bg-green-900/30",
     },
+    {
+      label: "Not in Wishlist",
+      value: noWishlistCount,
+      color: "text-purple-400",
+      bg: "bg-purple-900/30",
+    },
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
       {stats.map((stat) => (
         <div
           key={stat.label}

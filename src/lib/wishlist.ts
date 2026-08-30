@@ -1,4 +1,5 @@
 import { WishlistEntry, WishlistDatabase } from "./types";
+import { fetchEnhancedToBaseMap, normalizePerkHash } from "./enhanced-perks";
 
 // Voltron wishlist URL - a popular aggregated community wishlist
 // This combines recommendations from light.gg, Pandapaxxy, and other community sources
@@ -76,8 +77,15 @@ export function parseWishlistLine(
  *    applies to every dimwishlist line after it until the next `//notes:` line
  *    (inline `#notes:` on a roll line takes precedence).
  *  - Notes may carry a trailing `|tags:` block (pve, pvp, god-pve, ...).
+ *
+ * All perk hashes are normalized to their base (non-enhanced) version via
+ * `enhancedToBase`, so rolls listed with enhanced trait hashes collapse into
+ * their base equivalents.
  */
-export function parseWishlistText(text: string): WishlistDatabase {
+export function parseWishlistText(
+  text: string,
+  enhancedToBase: Map<number, number> = new Map()
+): WishlistDatabase {
   const entries = new Map<number, WishlistEntry[]>();
   let title = "";
   let description = "";
@@ -117,6 +125,13 @@ export function parseWishlistText(text: string): WishlistDatabase {
     if (parsed.itemHash === WILDCARD_ITEM_HASH) continue;
     if (parsed.perks.length === 0) continue;
 
+    // Normalize enhanced trait hashes to base, dropping duplicates within a roll
+    if (enhancedToBase.size > 0) {
+      parsed.perks = [
+        ...new Set(parsed.perks.map((p) => normalizePerkHash(p, enhancedToBase))),
+      ];
+    }
+
     const dedupeKey = `${parsed.itemHash}:${[...parsed.perks].sort((a, b) => a - b).join(",")}`;
     if (seenRolls.has(dedupeKey)) continue;
     seenRolls.add(dedupeKey);
@@ -153,6 +168,7 @@ export function parseWishlistText(text: string): WishlistDatabase {
     title: title || "Community Wishlist",
     description,
     lastUpdated: new Date(),
+    enhancedToBase,
   };
 }
 
@@ -164,14 +180,17 @@ export async function fetchWishlist(): Promise<WishlistDatabase> {
   try {
     // no-store: the file is ~26MB, far over Next.js' 2MB data-cache limit.
     // Caching is handled by the module-level cache above instead.
-    const response = await fetch(VOLTRON_WISHLIST_URL, { cache: "no-store" });
+    const [response, enhancedToBase] = await Promise.all([
+      fetch(VOLTRON_WISHLIST_URL, { cache: "no-store" }),
+      fetchEnhancedToBaseMap(),
+    ]);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch wishlist: ${response.status}`);
     }
 
     const text = await response.text();
-    cachedWishlist = parseWishlistText(text);
+    cachedWishlist = parseWishlistText(text, enhancedToBase);
     wishlistCacheTimestamp = Date.now();
     return cachedWishlist;
   } catch (error) {
@@ -181,6 +200,7 @@ export async function fetchWishlist(): Promise<WishlistDatabase> {
       title: "Empty Wishlist",
       description: "Failed to load community wishlist",
       lastUpdated: new Date(),
+      enhancedToBase: new Map(),
     };
   }
 }
@@ -217,7 +237,13 @@ export function checkWishlistMatch(
     };
   }
 
-  const equipped = new Set(equippedPerkHashes);
+  // Normalize equipped perks to base versions, remembering the original hash
+  // so the UI can highlight the enhanced perk actually on the weapon.
+  const enhancedToBase = wishlist.enhancedToBase ?? new Map<number, number>();
+  const equipped = new Map<number, number>(); // base hash -> equipped hash
+  for (const hash of equippedPerkHashes) {
+    equipped.set(normalizePerkHash(hash, enhancedToBase), hash);
+  }
 
   let bestMatchCount = 0;
   let bestMaxPerks = 0;
@@ -230,9 +256,11 @@ export function checkWishlistMatch(
     for (const perkSet of entry.recommendedPerks) {
       let matchCount = 0;
       for (const p of perkSet) {
-        if (equipped.has(p)) {
+        const equippedHash = equipped.get(p);
+        if (equippedHash !== undefined) {
           matchCount++;
           allMatchingPerks.add(p);
+          allMatchingPerks.add(equippedHash);
         }
       }
 
