@@ -118,6 +118,8 @@ export interface WeaponRoll {
   isGodRoll: boolean;
   isRecommended: boolean;
   wishlistNotes: string[];
+  /** Tags from matching wishlist entries (e.g. "pve", "god-pvp", "controller") */
+  wishlistTags?: string[];
   matchedPerkCount: number;
   location: ItemLocation;
   characterId?: string;
@@ -172,7 +174,7 @@ export interface WishlistEntry {
   itemHash: number;
   recommendedPerks: number[][]; // Array of perk sets (each set is an array of perk hashes)
   notes: string;
-  isExpert: boolean;
+  tags: string[]; // e.g. ["pve", "god-pvp", "controller"] from the |tags: block
 }
 
 export interface WishlistDatabase {

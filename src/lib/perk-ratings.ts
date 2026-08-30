@@ -35,6 +35,9 @@ const PERK_TIERS: Record<string, PerkTier> = {
   "repulsor brace": "S",
   "destabilizing rounds": "S",
   "hatchling": "S",
+  "kinetic tremors": "S",
+  "rewind rounds": "S",
+  "jolting feedback": "S",
 
   // --- A-tier: strong in most situations ---
   "demolitionist": "A",
@@ -73,6 +76,17 @@ const PERK_TIERS: Record<string, PerkTier> = {
   "field prep": "A",
   "clown cartridge": "A",
   "lead from gold": "A",
+  "sword logic": "A",
+  "desperate measures": "A",
+  "attrition orbs": "A",
+  "one-two punch": "A",
+  "rolling storm": "A",
+  "lone wolf": "A",
+  "elemental honing": "A",
+  "paracausal affinity": "A",
+  "master of arms": "A",
+  "impulse amplifier": "A",
+  "chill clip": "A",
 
   // --- B-tier: situationally good ---
   "rangefinder": "B",
@@ -93,11 +107,18 @@ const PERK_TIERS: Record<string, PerkTier> = {
   "sympathetic arsenal": "B",
   "encore": "B",
   "headstone": "B",
-  "chill clip": "B",
   "gutshot straight": "B",
   "focused fury": "B",
   "successful warm-up": "B",
   "pugilist": "B",
+  "keep away": "B",
+  "to the pain": "B",
+  "air trigger": "B",
+  "closing time": "B",
+  "adagio": "B",
+  "offhand strike": "B",
+  "shoot to loot": "B",
+  "strategist": "B",
 };
 
 const TIER_SCORES: Record<PerkTier, number> = { S: 3, A: 2, B: 1 };

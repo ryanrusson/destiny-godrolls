@@ -230,6 +230,7 @@ export async function analyzeProfile(
       isGodRoll,
       isRecommended,
       wishlistNotes: wishlistResult.matchingNotes,
+      wishlistTags: wishlistResult.matchingTags,
       matchedPerkCount: wishlistResult.matchedPerkCount,
       location,
       characterId,
