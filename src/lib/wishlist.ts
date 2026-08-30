@@ -1,4 +1,5 @@
 import { WishlistEntry, WishlistDatabase } from "./types";
+import { fetchEnhancedToBaseMap, normalizePerkHash } from "./enhanced-perks";
 
 // Voltron wishlist URL - a popular aggregated community wishlist
 // This combines recommendations from light.gg, Pandapaxxy, and other community sources
@@ -9,6 +10,27 @@ let cachedWishlist: WishlistDatabase | null = null;
 let wishlistCacheTimestamp = 0;
 const WISHLIST_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
 
+// DIM wishlists use -69420 as a wildcard "any item" hash
+const WILDCARD_ITEM_HASH = 69420;
+
+/**
+ * Split a DIM note string into display text and tags.
+ * Notes may end with a tag block: "...some text|tags:PvE,God-PvP,MKB"
+ * Tags are separated by commas and/or whitespace.
+ */
+export function splitNotesAndTags(rawNotes: string): { notes: string; tags: string[] } {
+  const tagIndex = rawNotes.lastIndexOf("|tags:");
+  if (tagIndex === -1) return { notes: rawNotes.trim(), tags: [] };
+
+  const tags = rawNotes
+    .substring(tagIndex + 6)
+    .split(/[,\s]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+
+  return { notes: rawNotes.substring(0, tagIndex).trim(), tags };
+}
+
 /**
  * Parse DIM wishlist format lines.
  *
@@ -17,7 +39,7 @@ const WISHLIST_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
  */
 export function parseWishlistLine(
   line: string
-): { itemHash: number; perks: number[]; notes: string; isTrash: boolean } | null {
+): { itemHash: number; perks: number[]; notes: string | null; isTrash: boolean } | null {
   const trimmed = line.trim();
 
   if (!trimmed.startsWith("dimwishlist:item=")) return null;
@@ -38,67 +60,115 @@ export function parseWishlistLine(
         .filter((p) => !isNaN(p) && p > 0)
     : [];
 
-  // Extract notes
+  // Extract inline notes (null means "no inline notes" so block notes can apply)
   const notesMatch = trimmed.match(/#notes:(.*)/);
-  const notes = notesMatch ? notesMatch[1].trim() : "";
+  const notes = notesMatch ? notesMatch[1].trim() : null;
 
   return { itemHash, perks, notes, isTrash };
 }
 
-export function parseWishlistText(text: string): WishlistDatabase {
+/**
+ * Parse a full DIM-format wishlist file (e.g. voltron.txt).
+ *
+ * Voltron is a concatenation of many sub-wishlists. Important format details:
+ *  - The first title:/description: lines describe the overall list; later ones
+ *    belong to embedded sub-lists and are ignored.
+ *  - Most rolls get their notes from a preceding `//notes:` block line, which
+ *    applies to every dimwishlist line after it until the next `//notes:` line
+ *    (inline `#notes:` on a roll line takes precedence).
+ *  - Notes may carry a trailing `|tags:` block (pve, pvp, god-pve, ...).
+ *
+ * All perk hashes are normalized to their base (non-enhanced) version via
+ * `enhancedToBase`, so rolls listed with enhanced trait hashes collapse into
+ * their base equivalents.
+ */
+export function parseWishlistText(
+  text: string,
+  enhancedToBase: Map<number, number> = new Map()
+): WishlistDatabase {
   const entries = new Map<number, WishlistEntry[]>();
-  let title = "Community Wishlist";
+  let title = "";
   let description = "";
+
+  // Notes from the current `//notes:` block, applied to subsequent rolls
+  let blockNotes = "";
+  let blockTags: string[] = [];
+
+  // Dedupe identical item+perk-set combinations across sub-lists
+  const seenRolls = new Set<string>();
 
   const lines = text.split("\n");
 
   for (const line of lines) {
     const trimmed = line.trim();
 
-    // Parse title/description comments
+    // Keep only the first (top-level) title/description
     if (trimmed.startsWith("title:")) {
-      title = trimmed.substring(6).trim();
+      if (!title) title = trimmed.substring(6).trim();
       continue;
     }
     if (trimmed.startsWith("description:")) {
-      description = trimmed.substring(12).trim();
+      if (!description) description = trimmed.substring(12).trim();
+      continue;
+    }
+
+    // Block notes: apply to all following rolls until the next notes block
+    if (trimmed.startsWith("//notes:")) {
+      const split = splitNotesAndTags(trimmed.substring(8));
+      blockNotes = split.notes;
+      blockTags = split.tags;
       continue;
     }
 
     const parsed = parseWishlistLine(trimmed);
     if (!parsed || parsed.isTrash) continue;
+    if (parsed.itemHash === WILDCARD_ITEM_HASH) continue;
     if (parsed.perks.length === 0) continue;
 
-    const existing = entries.get(parsed.itemHash) || [];
-    // Check if this exact perk set already exists
-    const isDuplicate = existing.some(
-      (e) =>
-        e.recommendedPerks.length > 0 &&
-        e.recommendedPerks.some(
-          (perkSet) =>
-            perkSet.length === parsed.perks.length &&
-            perkSet.every((p) => parsed.perks.includes(p))
-        )
-    );
+    // Normalize enhanced trait hashes to base, dropping duplicates within a roll
+    if (enhancedToBase.size > 0) {
+      parsed.perks = [
+        ...new Set(parsed.perks.map((p) => normalizePerkHash(p, enhancedToBase))),
+      ];
+    }
 
-    if (!isDuplicate) {
-      existing.push({
-        itemHash: parsed.itemHash,
-        recommendedPerks: [parsed.perks],
-        notes: parsed.notes,
-        isExpert: parsed.notes.toLowerCase().includes("pve") ||
-          parsed.notes.toLowerCase().includes("pvp") ||
-          parsed.notes.toLowerCase().includes("god"),
-      });
-      entries.set(parsed.itemHash, existing);
+    const dedupeKey = `${parsed.itemHash}:${[...parsed.perks].sort((a, b) => a - b).join(",")}`;
+    if (seenRolls.has(dedupeKey)) continue;
+    seenRolls.add(dedupeKey);
+
+    // Inline notes override the current block notes
+    let notes = blockNotes;
+    let tags = blockTags;
+    if (parsed.notes !== null) {
+      const split = splitNotesAndTags(parsed.notes);
+      notes = split.notes;
+      tags = split.tags;
+    }
+
+    const existing = entries.get(parsed.itemHash);
+    if (!existing) {
+      entries.set(parsed.itemHash, [
+        { itemHash: parsed.itemHash, recommendedPerks: [parsed.perks], notes, tags },
+      ]);
+      continue;
+    }
+
+    // Rolls from the same notes block are grouped into one entry. Blocks are
+    // contiguous in the file, so checking the last entry is enough.
+    const last = existing[existing.length - 1];
+    if (last.notes === notes && last.tags === tags) {
+      last.recommendedPerks.push(parsed.perks);
+    } else {
+      existing.push({ itemHash: parsed.itemHash, recommendedPerks: [parsed.perks], notes, tags });
     }
   }
 
   return {
     entries,
-    title,
+    title: title || "Community Wishlist",
     description,
     lastUpdated: new Date(),
+    enhancedToBase,
   };
 }
 
@@ -108,16 +178,19 @@ export async function fetchWishlist(): Promise<WishlistDatabase> {
   }
 
   try {
-    const response = await fetch(VOLTRON_WISHLIST_URL, {
-      next: { revalidate: 3600 },
-    });
+    // no-store: the file is ~26MB, far over Next.js' 2MB data-cache limit.
+    // Caching is handled by the module-level cache above instead.
+    const [response, enhancedToBase] = await Promise.all([
+      fetch(VOLTRON_WISHLIST_URL, { cache: "no-store" }),
+      fetchEnhancedToBaseMap(),
+    ]);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch wishlist: ${response.status}`);
     }
 
     const text = await response.text();
-    cachedWishlist = parseWishlistText(text);
+    cachedWishlist = parseWishlistText(text, enhancedToBase);
     wishlistCacheTimestamp = Date.now();
     return cachedWishlist;
   } catch (error) {
@@ -127,9 +200,12 @@ export async function fetchWishlist(): Promise<WishlistDatabase> {
       title: "Empty Wishlist",
       description: "Failed to load community wishlist",
       lastUpdated: new Date(),
+      enhancedToBase: new Map(),
     };
   }
 }
+
+const MAX_MATCHING_NOTES = 3;
 
 /**
  * Check if a weapon's equipped perks match any wishlist entry.
@@ -145,6 +221,7 @@ export function checkWishlistMatch(
   matchedPerkCount: number;
   maxPossibleMatch: number;
   matchingNotes: string[];
+  matchingTags: string[];
   matchingPerkHashes: Set<number>;
 } {
   const entries = wishlist.entries.get(itemHash);
@@ -155,21 +232,37 @@ export function checkWishlistMatch(
       matchedPerkCount: 0,
       maxPossibleMatch: 0,
       matchingNotes: [],
+      matchingTags: [],
       matchingPerkHashes: new Set(),
     };
   }
 
+  // Normalize equipped perks to base versions, remembering the original hash
+  // so the UI can highlight the enhanced perk actually on the weapon.
+  const enhancedToBase = wishlist.enhancedToBase ?? new Map<number, number>();
+  const equipped = new Map<number, number>(); // base hash -> equipped hash
+  for (const hash of equippedPerkHashes) {
+    equipped.set(normalizePerkHash(hash, enhancedToBase), hash);
+  }
+
   let bestMatchCount = 0;
   let bestMaxPerks = 0;
-  const allNotes: string[] = [];
+  const allNotes = new Set<string>();
+  const allTags = new Set<string>();
   const allMatchingPerks = new Set<number>();
   let hasFullMatch = false;
 
   for (const entry of entries) {
     for (const perkSet of entry.recommendedPerks) {
-      const matchCount = perkSet.filter((p) =>
-        equippedPerkHashes.includes(p)
-      ).length;
+      let matchCount = 0;
+      for (const p of perkSet) {
+        const equippedHash = equipped.get(p);
+        if (equippedHash !== undefined) {
+          matchCount++;
+          allMatchingPerks.add(p);
+          allMatchingPerks.add(equippedHash);
+        }
+      }
 
       if (matchCount > bestMatchCount) {
         bestMatchCount = matchCount;
@@ -179,14 +272,8 @@ export function checkWishlistMatch(
       // Full match = all perks from the wishlist entry are present
       if (matchCount === perkSet.length && perkSet.length >= 2) {
         hasFullMatch = true;
-        if (entry.notes) allNotes.push(entry.notes);
-      }
-
-      // Track which perks are in wishlists
-      for (const p of perkSet) {
-        if (equippedPerkHashes.includes(p)) {
-          allMatchingPerks.add(p);
-        }
+        if (entry.notes) allNotes.add(entry.notes);
+        for (const tag of entry.tags) allTags.add(tag);
       }
     }
   }
@@ -198,7 +285,8 @@ export function checkWishlistMatch(
     isRecommended: bestMatchCount >= 3 || hasFullMatch,
     matchedPerkCount: bestMatchCount,
     maxPossibleMatch: bestMaxPerks,
-    matchingNotes: [...new Set(allNotes)],
+    matchingNotes: [...allNotes].slice(0, MAX_MATCHING_NOTES),
+    matchingTags: [...allTags],
     matchingPerkHashes: allMatchingPerks,
   };
 }

@@ -195,17 +195,16 @@ export async function analyzeProfile(
 
     // Use fallback perk scoring when the weapon has no wishlist coverage
     const hasWishlistCoverage = wishlist.entries.has(item.itemHash);
+    const usedFallback = !hasWishlistCoverage;
     let fallbackRating: "great" | "good" | "ok" | "none" | undefined;
     let fallbackScore: number | undefined;
     let fallbackMaxScore: number | undefined;
-    let usedFallback = false;
 
-    if (!hasWishlistCoverage && perks.length > 0) {
+    if (usedFallback && perks.length > 0) {
       const fb = scoreFallbackRoll(perks);
       fallbackRating = fb.rating;
       fallbackScore = fb.score;
       fallbackMaxScore = fb.maxScore;
-      usedFallback = true;
     }
 
     // If fallback scored this roll well, treat it as recommended
@@ -230,6 +229,7 @@ export async function analyzeProfile(
       isGodRoll,
       isRecommended,
       wishlistNotes: wishlistResult.matchingNotes,
+      wishlistTags: wishlistResult.matchingTags,
       matchedPerkCount: wishlistResult.matchedPerkCount,
       location,
       characterId,

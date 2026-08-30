@@ -8,7 +8,7 @@ import DuplicateGroup from "@/components/DuplicateGroup";
 import { VaultAnalysis, DAMAGE_TYPES } from "@/lib/types";
 import { DEMO_ANALYSIS } from "@/lib/demo-data";
 
-type FilterMode = "all" | "junk" | "godrolls";
+type FilterMode = "all" | "junk" | "godrolls" | "nowishlist";
 
 function VaultContent() {
   const searchParams = useSearchParams();
@@ -80,6 +80,7 @@ function VaultContent() {
     // Status filter
     if (filter === "junk" && group.junkRecommendations.length === 0) return false;
     if (filter === "godrolls" && !group.rolls.some((r) => r.isGodRoll)) return false;
+    if (filter === "nowishlist" && !group.rolls.some((r) => r.usedFallback)) return false;
 
     // Text search
     if (searchQuery) {
@@ -291,6 +292,22 @@ function VaultContent() {
                     {
                       baseGroups?.filter((g) =>
                         g.rolls.some((r) => r.isGodRoll)
+                      ).length || 0
+                    }
+                    )
+                  </button>
+                  <button
+                    onClick={() => setFilter("nowishlist")}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      filter === "nowishlist"
+                        ? "bg-purple-900/50 text-purple-300"
+                        : "text-gray-500 hover:text-gray-300"
+                    }`}
+                  >
+                    Not in Wishlist (
+                    {
+                      baseGroups?.filter((g) =>
+                        g.rolls.some((r) => r.usedFallback)
                       ).length || 0
                     }
                     )

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { WeaponRoll, PerkInfo, DAMAGE_TYPES } from "@/lib/types";
 import { bungieIconUrl } from "@/lib/bungie-api";
 
@@ -22,6 +23,39 @@ const perkColumnLabels: Record<number, string> = {
   3: "Trait 1",
   4: "Trait 2",
 };
+
+function tagChipClass(tag: string): string {
+  if (tag.includes("god")) return "bg-yellow-900/50 text-yellow-300 border-yellow-700/50";
+  if (tag.includes("pvp")) return "bg-purple-900/50 text-purple-300 border-purple-700/50";
+  if (tag.includes("pve")) return "bg-sky-900/50 text-sky-300 border-sky-700/50";
+  return "bg-gray-800/60 text-gray-400 border-gray-700/50";
+}
+
+/** Notes can be long community write-ups, so clamp them with a toggle. */
+function WishlistNote({ note }: { note: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = note.length > 180;
+
+  return (
+    <div>
+      <p
+        className={`text-xs text-yellow-400/80 italic ${
+          !expanded && isLong ? "line-clamp-3" : ""
+        }`}
+      >
+        {note}
+      </p>
+      {isLong && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-[10px] text-gray-500 hover:text-gray-300 mt-0.5"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function statBarColor(value: number): string {
   if (value >= 80) return "bg-green-500";
@@ -128,6 +162,14 @@ export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
               KEEP (BEST)
             </span>
           )}
+          {roll.usedFallback && (
+            <span
+              className="text-[9px] font-medium uppercase px-1.5 py-0.5 rounded border bg-purple-900/40 text-purple-300/90 border-purple-800/40"
+              title="This weapon has no entries in the Voltron community wishlist; it was rated by generic perk quality instead."
+            >
+              Not in wishlist
+            </span>
+          )}
           {roll.usedFallback && roll.fallbackRating && (
             <span className="text-[10px] text-gray-500 italic">
               perk score: {roll.fallbackScore}/{roll.fallbackMaxScore}
@@ -227,13 +269,23 @@ export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
         })}
       </div>
 
-      {/* Wishlist Notes */}
-      {roll.wishlistNotes.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-gray-800">
+      {/* Wishlist Tags & Notes */}
+      {((roll.wishlistTags?.length ?? 0) > 0 || roll.wishlistNotes.length > 0) && (
+        <div className="mt-3 pt-3 border-t border-gray-800 space-y-2">
+          {(roll.wishlistTags?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {roll.wishlistTags!.slice(0, 6).map((tag) => (
+                <span
+                  key={tag}
+                  className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded border ${tagChipClass(tag)}`}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
           {roll.wishlistNotes.map((note, i) => (
-            <p key={i} className="text-xs text-yellow-400/80 italic">
-              {note}
-            </p>
+            <WishlistNote key={i} note={note} />
           ))}
         </div>
       )}
