@@ -11,7 +11,7 @@ Built with Next.js 16, React 19, TypeScript, and Tailwind CSS.
 Go to [bungie.net/en/Application](https://www.bungie.net/en/Application) and create a new app:
 
 - **OAuth Client Type:** Confidential
-- **Redirect URL:** `https://redirectmeto.com/http://localhost:4000/api/auth/callback`
+- **Redirect URL:** `https://redirectmeto.com/http://localhost:8080/api/auth/callback`
   (The `redirectmeto.com` proxy is needed because Bungie requires HTTPS redirect URLs, but we're running localhost over HTTP.)
 
 Note your **API Key**, **OAuth client_id**, and **OAuth client_secret**.
@@ -28,7 +28,7 @@ cp .env.example .env.local
 BUNGIE_API_KEY=your_api_key
 BUNGIE_CLIENT_ID=your_client_id
 BUNGIE_CLIENT_SECRET=your_client_secret
-NEXT_PUBLIC_APP_URL=http://localhost:4000
+NEXT_PUBLIC_APP_URL=http://localhost:8080
 SESSION_SECRET=some-random-string-at-least-32-characters
 DIM_API_KEY=your_dim_api_key   # optional, enables "Sync to DIM" — see DIM Sync integration
 ```
@@ -40,7 +40,7 @@ npm install
 npm run dev
 ```
 
-The app runs on [http://localhost:4000](http://localhost:4000). You can also try the **Demo Mode** from the home page without signing in.
+The app runs on [http://localhost:8080](http://localhost:8080). You can also try the **Demo Mode** from the home page without signing in.
 
 ## How It Works
 
@@ -184,7 +184,7 @@ localhost-style origins:
 ```bash
 curl -s -X POST https://api.destinyitemmanager.com/new_app \
   -H "Content-Type: application/json" \
-  -d '{"id":"your-app-name-dev","bungieApiKey":"YOUR_BUNGIE_API_KEY","origin":"http://localhost:4000"}'
+  -d '{"id":"your-app-name-dev","bungieApiKey":"YOUR_BUNGIE_API_KEY","origin":"http://localhost:8080"}'
 ```
 
 - `id` must match `/^[a-z0-9-]{3,}$/`; re-POSTing the same request returns the
