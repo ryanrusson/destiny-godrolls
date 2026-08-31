@@ -195,11 +195,11 @@ export const DIM_TAG_LABELS: Record<DimTag, string> = {
 };
 
 export const DIM_TAG_HINTS: Record<DimTag, string> = {
-  favorite: "God rolls — the ones you actually chase",
+  favorite: "The best you own — god rolls, Tier 5s, kept exotics",
   keep: "Worth vault space",
   infuse: "Junk, but higher power than anything you're keeping in the slot",
   junk: "Safe to dismantle",
-  archive: "Outclassed by similar weapons — worth a manual look",
+  archive: "Needs review — worth a manual look before deciding",
 };
 
 export const DIM_TAG_STYLES: Record<DimTag, string> = {
@@ -315,6 +315,8 @@ export interface ArmorPiece {
   verdict: ArmorVerdict;
   /** Human-readable reason tags explaining the verdict */
   reasons: string[];
+  /** DIM tag to apply to this instance */
+  suggestedTag: DimTag;
   /** Internal ranking score (higher = better) */
   score: number;
   location: ItemLocation;
@@ -344,6 +346,8 @@ export interface ArmorAnalysis {
   tier5Count: number;
   exoticCount: number;
   legacyCount: number;
+  /** Instance counts per suggested DIM tag */
+  tagCounts: Record<DimTag, number>;
 }
 
 // --- Wishlist Types ---
@@ -374,6 +378,9 @@ export interface UserSession {
   destinyMembershipId: string;
   destinyMembershipType: number;
   displayName: string;
+  /** Cached DIM Sync auth token (30-day JWT issued by api.destinyitemmanager.com) */
+  dimAccessToken?: string;
+  dimTokenExpiry?: number;
 }
 
 // --- Damage Type Constants ---

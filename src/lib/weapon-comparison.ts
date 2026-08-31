@@ -455,27 +455,3 @@ export function compareWeapons(rolls: WeaponRoll[]): ComparisonResult {
   };
 }
 
-// ------------------------------------------------------------------
-// DIM interop
-// ------------------------------------------------------------------
-
-/**
- * Build a DIM search query that selects exactly these instances, e.g.
- * `id:6917529 or id:6917530`. Pasting it into DIM's search bar lets you bulk
- * tag the whole set from the item actions menu.
- */
-export function buildDimQuery(instanceIds: string[]): string {
-  return instanceIds.map((id) => `id:${id}`).join(" or ");
-}
-
-/** Instance ids per suggested DIM tag, ready for {@link buildDimQuery}. */
-export function instanceIdsByTag(rolls: WeaponRoll[]): Record<DimTag, string[]> {
-  const byTag = Object.fromEntries(DIM_TAGS.map((t) => [t, [] as string[]])) as Record<
-    DimTag,
-    string[]
-  >;
-  for (const roll of rolls) {
-    byTag[roll.suggestedTag].push(roll.itemInstanceId);
-  }
-  return byTag;
-}

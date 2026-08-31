@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArmorAnalysis,
   ArmorArchetype,
@@ -9,6 +9,8 @@ import {
   CLASS_NAMES,
 } from "@/lib/types";
 import ArmorGroupCard from "./ArmorGroupCard";
+import DimTagPanel from "./DimTagPanel";
+import StatsBar from "./StatsBar";
 
 type ArmorFilterMode = "all" | "junk" | "review" | "tier5" | "legacy" | "exotics";
 
@@ -26,9 +28,10 @@ const SLOT_OPTIONS: ArmorSlot[] = ["helmet", "gauntlets", "chest", "legs", "clas
 
 interface ArmorViewProps {
   armor: ArmorAnalysis;
+  isDemo?: boolean;
 }
 
-export default function ArmorView({ armor }: ArmorViewProps) {
+export default function ArmorView({ armor, isDemo = false }: ArmorViewProps) {
   const [filter, setFilter] = useState<ArmorFilterMode>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [classFilter, setClassFilter] = useState<string>("all");
@@ -39,43 +42,56 @@ export default function ArmorView({ armor }: ArmorViewProps) {
 
   const baseGroups = showAllArmor ? armor.allArmorGroups : armor.duplicateGroups;
 
-  const filteredGroups = baseGroups.filter((group) => {
-    // Status filter tabs
-    if (filter === "junk" && group.junkRecommendations.length === 0) return false;
-    if (filter === "review" && !group.pieces.some((p) => p.verdict === "review"))
-      return false;
-    if (filter === "tier5" && !group.pieces.some((p) => p.gearTier === 5)) return false;
-    if (filter === "legacy" && !group.pieces.some((p) => p.isLegacy)) return false;
-    if (filter === "exotics" && !group.isExoticGroup) return false;
+  // Search/dropdown filters, applied before the status tabs, so tab counts and
+  // stat tiles track the filters. Memoized in two stages like the weapons view.
+  const groupsMatchingFilters = useMemo(
+    () =>
+      baseGroups.filter((group) => {
+        // Text search: name or archetype
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          const nameMatch = group.pieces.some((p) => p.name.toLowerCase().includes(q));
+          const archetypeMatch = group.pieces.some((p) =>
+            p.archetype.toLowerCase().includes(q)
+          );
+          if (!nameMatch && !archetypeMatch) return false;
+        }
 
-    // Text search: name or archetype
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const nameMatch = group.pieces.some((p) => p.name.toLowerCase().includes(q));
-      const archetypeMatch = group.pieces.some((p) =>
-        p.archetype.toLowerCase().includes(q)
-      );
-      if (!nameMatch && !archetypeMatch) return false;
-    }
+        // Dropdowns
+        if (classFilter !== "all" && String(group.classType) !== classFilter) return false;
+        if (slotFilter !== "all" && group.slot !== slotFilter) return false;
+        if (
+          archetypeFilter !== "all" &&
+          !group.pieces.some((p) => p.archetype === archetypeFilter)
+        )
+          return false;
+        if (tierFilter === "legacy" && !group.pieces.some((p) => p.isLegacy)) return false;
+        if (
+          tierFilter !== "all" &&
+          tierFilter !== "legacy" &&
+          !group.pieces.some((p) => String(p.gearTier) === tierFilter)
+        )
+          return false;
 
-    // Dropdowns
-    if (classFilter !== "all" && String(group.classType) !== classFilter) return false;
-    if (slotFilter !== "all" && group.slot !== slotFilter) return false;
-    if (
-      archetypeFilter !== "all" &&
-      !group.pieces.some((p) => p.archetype === archetypeFilter)
-    )
-      return false;
-    if (tierFilter === "legacy" && !group.pieces.some((p) => p.isLegacy)) return false;
-    if (
-      tierFilter !== "all" &&
-      tierFilter !== "legacy" &&
-      !group.pieces.some((p) => String(p.gearTier) === tierFilter)
-    )
-      return false;
+        return true;
+      }),
+    [baseGroups, searchQuery, classFilter, slotFilter, archetypeFilter, tierFilter]
+  );
 
-    return true;
-  });
+  // Status tab on top of the other filters
+  const filteredGroups = useMemo(
+    () =>
+      groupsMatchingFilters.filter((group) => {
+        if (filter === "junk" && group.junkRecommendations.length === 0) return false;
+        if (filter === "review" && !group.pieces.some((p) => p.verdict === "review"))
+          return false;
+        if (filter === "tier5" && !group.pieces.some((p) => p.gearTier === 5)) return false;
+        if (filter === "legacy" && !group.pieces.some((p) => p.isLegacy)) return false;
+        if (filter === "exotics" && !group.isExoticGroup) return false;
+        return true;
+      }),
+    [groupsMatchingFilters, filter]
+  );
 
   const hasActiveFilters =
     Boolean(searchQuery) ||
@@ -84,41 +100,60 @@ export default function ArmorView({ armor }: ArmorViewProps) {
     archetypeFilter !== "all" ||
     tierFilter !== "all";
 
+  // Deduplicate pieces for the stat tiles and DIM export: a group can appear in
+  // both the duplicates and all-armor lists, but a piece only belongs to one group.
+  const visiblePieces = useMemo(
+    () => [
+      ...new Map(
+        filteredGroups
+          .flatMap((g) => g.pieces)
+          .map((piece) => [piece.itemInstanceId, piece])
+      ).values(),
+    ],
+    [filteredGroups]
+  );
+
+  const visibleJunkCount = visiblePieces.filter((p) => p.verdict === "junk").length;
+
+  // Tab counts reflect the active search/dropdown filters (not the tab itself)
   const filterTabs: { mode: ArmorFilterMode; label: string; count: number; active: string }[] = [
     {
       mode: "all",
       label: showAllArmor ? "All Armor" : "All Duplicates",
-      count: baseGroups.length,
+      count: groupsMatchingFilters.length,
       active: "bg-gray-700 text-white",
     },
     {
       mode: "junk",
       label: "Has Junk",
-      count: baseGroups.filter((g) => g.junkRecommendations.length > 0).length,
+      count: groupsMatchingFilters.filter((g) => g.junkRecommendations.length > 0).length,
       active: "bg-red-900/50 text-red-300",
     },
     {
       mode: "review",
       label: "Needs Review",
-      count: baseGroups.filter((g) => g.pieces.some((p) => p.verdict === "review")).length,
+      count: groupsMatchingFilters.filter((g) =>
+        g.pieces.some((p) => p.verdict === "review")
+      ).length,
       active: "bg-amber-900/50 text-amber-300",
     },
     {
       mode: "tier5",
       label: "Tier 5",
-      count: baseGroups.filter((g) => g.pieces.some((p) => p.gearTier === 5)).length,
+      count: groupsMatchingFilters.filter((g) => g.pieces.some((p) => p.gearTier === 5))
+        .length,
       active: "bg-yellow-900/50 text-yellow-300",
     },
     {
       mode: "legacy",
       label: "Legacy",
-      count: baseGroups.filter((g) => g.pieces.some((p) => p.isLegacy)).length,
+      count: groupsMatchingFilters.filter((g) => g.pieces.some((p) => p.isLegacy)).length,
       active: "bg-gray-700/80 text-gray-300",
     },
     {
       mode: "exotics",
       label: "Exotics",
-      count: baseGroups.filter((g) => g.isExoticGroup).length,
+      count: groupsMatchingFilters.filter((g) => g.isExoticGroup).length,
       active: "bg-yellow-900/50 text-yellow-300",
     },
   ];
@@ -134,6 +169,18 @@ export default function ArmorView({ armor }: ArmorViewProps) {
 
   return (
     <>
+      {/* Stats — follow the current filtered view */}
+      <div className="mb-8">
+        <StatsBar
+          mode="armor"
+          armor={armor}
+          visiblePieces={visiblePieces}
+          visibleDuplicateGroupCount={
+            filteredGroups.filter((g) => g.pieces.length >= 2).length
+          }
+        />
+      </div>
+
       {/* Search & Filter Bar */}
       <div className="mb-6 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
@@ -265,6 +312,14 @@ export default function ArmorView({ armor }: ArmorViewProps) {
         </div>
       </div>
 
+      {/* DIM tagging export for whatever is currently in view */}
+      <DimTagPanel
+        items={visiblePieces}
+        scopeLabel={showAllArmor ? "all armor" : "duplicate groups"}
+        itemNoun="armor piece"
+        isDemo={isDemo}
+      />
+
       {/* Armor Groups */}
       {filteredGroups.length > 0 ? (
         <div className="space-y-6">
@@ -294,12 +349,12 @@ export default function ArmorView({ armor }: ArmorViewProps) {
         </div>
       )}
 
-      {/* Junk Summary */}
-      {armor.junkCount > 0 && (
+      {/* Junk Summary — follows the current view */}
+      {visibleJunkCount > 0 && (
         <div className="mt-8 bg-red-950/20 border border-red-900/30 rounded-xl p-6 text-center">
           <p className="text-red-400 font-semibold text-lg">
-            {armor.junkCount} armor piece{armor.junkCount !== 1 ? "s" : ""} safe to
-            dismantle
+            {visibleJunkCount} armor piece{visibleJunkCount !== 1 ? "s" : ""}{" "}
+            {hasActiveFilters || !showAllArmor ? "in view " : ""}safe to dismantle
           </p>
           <p className="text-sm text-gray-500 mt-1">
             Legacy pieces, low gear tiers, and rolls strictly worse than armor you

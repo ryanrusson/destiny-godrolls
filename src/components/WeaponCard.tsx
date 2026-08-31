@@ -1,15 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import {
-  WeaponRoll,
-  PerkInfo,
-  DAMAGE_TYPES,
-  DIM_TAG_HINTS,
-  DIM_TAG_LABELS,
-  DIM_TAG_STYLES,
-} from "@/lib/types";
+import { WeaponRoll, PerkInfo, DAMAGE_TYPES } from "@/lib/types";
 import { bungieIconUrl } from "@/lib/bungie-api";
+import DimTagBadge from "./DimTagBadge";
 
 interface WeaponCardProps {
   roll: WeaponRoll;
@@ -150,13 +144,8 @@ export default function WeaponCard({ roll, statLeaders }: WeaponCardProps) {
         </div>
 
         <div className="flex flex-col items-end gap-1">
-          {/* Suggested DIM tag — the actionable verdict */}
-          <span
-            className={`text-xs font-bold px-2 py-0.5 rounded border uppercase ${DIM_TAG_STYLES[roll.suggestedTag]}`}
-            title={`DIM tag: ${DIM_TAG_LABELS[roll.suggestedTag]} — ${DIM_TAG_HINTS[roll.suggestedTag]}`}
-          >
-            {DIM_TAG_LABELS[roll.suggestedTag]}
-          </span>
+          {/* DIM tag — the actionable verdict, click to override */}
+          <DimTagBadge item={roll} />
           {(roll.isGodRoll || roll.isRecommended) && (
             <span
               className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border ${

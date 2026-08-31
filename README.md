@@ -1,6 +1,6 @@
 # Vault Janitor - Destiny 2 God Roll Checker
 
-A web app that connects to your Bungie account, scans your Destiny 2 vault, and tells you which weapons and armor pieces to keep and which to dismantle. Weapons are compared against duplicate copies *and* against every other weapon in your vault that fills the same role, then checked against the community-curated [Voltron wishlist](https://github.com/48klocs/dim-wish-list-sources) with a built-in perk scoring fallback. Armor is assessed under the Edge of Fate Armor 3.0 tiering system (gear tiers, archetypes, stat rolls). Every weapon gets a suggested [DIM](https://destinyitemmanager.com) tag, exportable as a DIM search query for bulk tagging.
+A web app that connects to your Bungie account, scans your Destiny 2 vault, and tells you which weapons and armor pieces to keep and which to dismantle. Weapons are compared against duplicate copies *and* against every other weapon in your vault that fills the same role, then checked against the community-curated [Voltron wishlist](https://github.com/48klocs/dim-wish-list-sources) with a built-in perk scoring fallback. Armor is assessed under the Edge of Fate Armor 3.0 tiering system (gear tiers, archetypes, stat rolls). Every weapon and armor piece gets a suggested [DIM](https://destinyitemmanager.com) tag, which can be pushed straight into your DIM account via DIM Sync or exported as a DIM search query for bulk tagging.
 
 Built with Next.js 16, React 19, TypeScript, and Tailwind CSS.
 
@@ -11,7 +11,7 @@ Built with Next.js 16, React 19, TypeScript, and Tailwind CSS.
 Go to [bungie.net/en/Application](https://www.bungie.net/en/Application) and create a new app:
 
 - **OAuth Client Type:** Confidential
-- **Redirect URL:** `https://redirectmeto.com/http://localhost:4000/api/auth/callback`
+- **Redirect URL:** `https://redirectmeto.com/http://localhost:8080/api/auth/callback`
   (The `redirectmeto.com` proxy is needed because Bungie requires HTTPS redirect URLs, but we're running localhost over HTTP.)
 
 Note your **API Key**, **OAuth client_id**, and **OAuth client_secret**.
@@ -28,8 +28,9 @@ cp .env.example .env.local
 BUNGIE_API_KEY=your_api_key
 BUNGIE_CLIENT_ID=your_client_id
 BUNGIE_CLIENT_SECRET=your_client_secret
-NEXT_PUBLIC_APP_URL=http://localhost:4000
+NEXT_PUBLIC_APP_URL=http://localhost:8080
 SESSION_SECRET=some-random-string-at-least-32-characters
+DIM_API_KEY=your_dim_api_key   # optional, enables "Sync to DIM" — see DIM Sync integration
 ```
 
 ### 3. Install and Run
@@ -39,7 +40,7 @@ npm install
 npm run dev
 ```
 
-The app runs on [http://localhost:4000](http://localhost:4000). You can also try the **Demo Mode** from the home page without signing in.
+The app runs on [http://localhost:8080](http://localhost:8080). You can also try the **Demo Mode** from the home page without signing in.
 
 ## How It Works
 
@@ -147,21 +148,60 @@ entirely; they occupy a slot no legendary competes for.
 
 ### DIM Tagging
 
-Every roll gets a suggested [DIM](https://destinyitemmanager.com) tag, because a
-tag belongs to an item rather than to a grouping:
+Every weapon roll and armor piece gets a suggested
+[DIM](https://destinyitemmanager.com) tag, because a tag belongs to an item
+rather than to a grouping:
 
-| Tag | Meaning |
-|-----|---------|
-| **Favorite** | God rolls - the ones you actually chase |
-| **Keep** | Worth vault space |
-| **Infuse** | Junk, but higher power than anything you're keeping in that slot - use it as fuel |
-| **Junk** | Safe to dismantle |
-| **Archive** | Outclassed by similar weapons - worth a manual look |
+| Tag | Weapons | Armor |
+|-----|---------|-------|
+| **Favorite** | God rolls | Kept Tier 5s and exotics |
+| **Keep** | Worth vault space | Worth vault space |
+| **Infuse** | Junk, but higher power than anything kept in that slot - use it as fuel | - |
+| **Junk** | Safe to dismantle | Safe to dismantle |
+| **Archive** | Outclassed by similar weapons - worth a manual look | Needs review - worth a manual look |
 
-The **DIM Tagging** panel above the results turns each tag into a DIM search
-query (`id:… or id:…`) covering exactly the weapons currently in view. Copy it,
-paste it into DIM's search bar, and bulk-tag the whole set from the item actions
-menu. The panel respects your active filters, so you can tag a slice at a time.
+The **DIM Tagging** panel above the results (on both the Weapons and Armor
+tabs) covers exactly the items currently in view, so your active filters let
+you tag a slice at a time. It offers two ways to get the tags into DIM:
+
+- **Sync to DIM** pushes the tags directly into your DIM account through the
+  [DIM Sync API](https://github.com/DestinyItemManager/dim-api). Before writing
+  anything it reads your existing DIM tags: items you tagged differently in DIM
+  are skipped unless you tick the overwrite box, and hand-written DIM notes are
+  never touched (the app only writes notes prefixed with `[VJ]`, and only
+  overwrites its own). Requires `DIM_API_KEY` (below); tags appear the next
+  time DIM syncs.
+- **Copy DIM search** turns each tag into a DIM search query (`id:… or id:…`).
+  Paste it into DIM's search bar and bulk-tag the set from the item actions
+  menu. Works without any extra setup.
+
+### DIM Sync integration
+
+The "Sync to DIM" button needs a DIM API key. For local development you can
+register one yourself — DIM's `/new_app` endpoint issues keys for
+localhost-style origins:
+
+```bash
+curl -s -X POST https://api.destinyitemmanager.com/new_app \
+  -H "Content-Type: application/json" \
+  -d '{"id":"your-app-name-dev","bungieApiKey":"YOUR_BUNGIE_API_KEY","origin":"http://localhost:8080"}'
+```
+
+- `id` must match `/^[a-z0-9-]{3,}$/`; re-POSTing the same request returns the
+  same key.
+- `bungieApiKey` must be the **same** `BUNGIE_API_KEY` this app uses — DIM
+  verifies your users' Bungie tokens with it.
+- The response nests the key: `{"app":{"dimApiKey":"…"}}`. Put that value in
+  `.env.local` as `DIM_API_KEY`.
+
+Deploying to a real domain needs a production key: join the
+[DIM Discord](https://discord.gg/dimapp) and message the maintainer (`bhollis`)
+with your production origin.
+
+Without `DIM_API_KEY` the app still works — the panel just offers the
+copy-paste search queries instead of direct sync. The sync talks only to DIM's
+servers; it never writes anything to Bungie, and the user must have DIM Sync
+enabled in DIM's settings (it's the default).
 
 ### What the Weapon Card Shows
 
@@ -194,6 +234,9 @@ src/
       bungie/
         profile/route.ts  # Returns player info
         inventory/route.ts# Fetches + analyzes vault
+      dim/
+        preview/route.ts  # Reads existing DIM tags (for sync diffing)
+        sync/route.ts     # Pushes tags into DIM Sync
   components/
     WeaponCard.tsx           # Individual weapon roll card
     ComparisonGroupCard.tsx  # A comparison group + its stat table
@@ -205,6 +248,8 @@ src/
     wishlist.ts           # Voltron wishlist parser
     analyzer.ts           # Core analysis engine
     weapon-comparison.ts  # Comparison scopes, verdicts, and DIM tags
+    dim-tags.ts           # Shared DIM interop (queries, annotations)
+    dim-api.ts            # DIM Sync API client (auth + tag push)
     perk-ratings.ts       # Fallback perk tier database
     demo-data.ts          # Demo mode sample data
     types.ts              # TypeScript interfaces

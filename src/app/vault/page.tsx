@@ -1,11 +1,15 @@
 "use client";
 
-import { Suspense, useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import StatsBar from "@/components/StatsBar";
 import ComparisonGroupCard from "@/components/ComparisonGroupCard";
 import DimTagPanel from "@/components/DimTagPanel";
+import {
+  DimTagOverridesProvider,
+  useDimTagOverrides,
+} from "@/components/DimTagContext";
 import ArmorView from "@/components/ArmorView";
 import {
   ComparisonScope,
@@ -44,6 +48,7 @@ function groupsForScope(
 
 function VaultContent() {
   const searchParams = useSearchParams();
+  const { overrides } = useDimTagOverrides();
   const isDemo = searchParams.get("demo") === "true";
 
   const [analysis, setAnalysis] = useState<VaultAnalysis | null>(null);
@@ -110,54 +115,79 @@ function VaultContent() {
       )
     : [];
 
-  const filteredGroups = baseGroups?.filter((group) => {
-    // Status filter
-    if (filter === "junk" && group.junkRecommendations.length === 0) return false;
-    if (filter === "review" && group.reviewRecommendations.length === 0) return false;
-    if (filter === "godrolls" && !group.rolls.some((r) => r.isGodRoll)) return false;
-    if (filter === "nowishlist" && !group.rolls.some((r) => r.usedFallback)) return false;
+  // Search/dropdown filters, applied before the status tabs. Memoized in two
+  // stages so tab counts and stat tiles track the filters without recomputing
+  // the whole pipeline on unrelated re-renders.
+  const groupsMatchingFilters = useMemo(
+    () =>
+      baseGroups?.filter((group) => {
+        // Text search
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          const labelMatch = group.label.toLowerCase().includes(q);
+          const typeMatch = group.weaponType.toLowerCase().includes(q);
+          const rollNameMatch = group.rolls.some((r) => r.name.toLowerCase().includes(q));
+          const perkMatch = group.rolls.some((r) =>
+            r.perks.some((col) =>
+              col.activePerks.some((p) => p.name.toLowerCase().includes(q))
+            )
+          );
+          if (!labelMatch && !typeMatch && !rollNameMatch && !perkMatch) return false;
+        }
 
-    // Text search
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const labelMatch = group.label.toLowerCase().includes(q);
-      const typeMatch = group.weaponType.toLowerCase().includes(q);
-      const rollNameMatch = group.rolls.some((r) => r.name.toLowerCase().includes(q));
-      const perkMatch = group.rolls.some((r) =>
-        r.perks.some((col) =>
-          col.activePerks.some((p) => p.name.toLowerCase().includes(q))
+        // Weapon type dropdown
+        if (weaponTypeFilter !== "all" && group.weaponType !== weaponTypeFilter) return false;
+
+        // Damage type dropdown — cross-weapon groups can mix elements, so match on
+        // the rolls rather than the group's representative element.
+        if (
+          damageTypeFilter !== "all" &&
+          !group.rolls.some((r) => String(r.damageType) === damageTypeFilter)
         )
-      );
-      if (!labelMatch && !typeMatch && !rollNameMatch && !perkMatch) return false;
-    }
+          return false;
 
-    // Weapon type dropdown
-    if (weaponTypeFilter !== "all" && group.weaponType !== weaponTypeFilter) return false;
+        // Suggested DIM tag dropdown
+        if (
+          tagFilter !== "all" &&
+          !group.rolls.some(
+            (r) => (overrides[r.itemInstanceId] ?? r.suggestedTag) === tagFilter
+          )
+        )
+          return false;
 
-    // Damage type dropdown — cross-weapon groups can mix elements, so match on
-    // the rolls rather than the group's representative element.
-    if (
-      damageTypeFilter !== "all" &&
-      !group.rolls.some((r) => String(r.damageType) === damageTypeFilter)
-    )
-      return false;
+        return true;
+      }),
+    [baseGroups, searchQuery, weaponTypeFilter, damageTypeFilter, tagFilter, overrides]
+  );
 
-    // Suggested DIM tag dropdown
-    if (tagFilter !== "all" && !group.rolls.some((r) => r.suggestedTag === tagFilter))
-      return false;
+  // Status tab on top of the other filters
+  const filteredGroups = useMemo(
+    () =>
+      groupsMatchingFilters?.filter((group) => {
+        if (filter === "junk" && group.junkRecommendations.length === 0) return false;
+        if (filter === "review" && group.reviewRecommendations.length === 0) return false;
+        if (filter === "godrolls" && !group.rolls.some((r) => r.isGodRoll)) return false;
+        if (filter === "nowishlist" && !group.rolls.some((r) => r.usedFallback)) return false;
+        return true;
+      }),
+    [groupsMatchingFilters, filter]
+  );
 
-    return true;
-  });
+  // Deduplicate rolls for the stat tiles and DIM export: cross-weapon scopes
+  // can list the same instance in more than one group.
+  const visibleRolls = useMemo(
+    () => [
+      ...new Map(
+        (filteredGroups ?? [])
+          .flatMap((g) => g.rolls)
+          .map((roll) => [roll.itemInstanceId, roll])
+      ).values(),
+    ],
+    [filteredGroups]
+  );
 
-  // Deduplicate rolls for the DIM export: cross-weapon scopes can list the
-  // same instance in more than one group.
-  const visibleRolls = [
-    ...new Map(
-      (filteredGroups ?? [])
-        .flatMap((g) => g.rolls)
-        .map((roll) => [roll.itemInstanceId, roll])
-    ).values(),
-  ];
+  const visibleJunkCount = visibleRolls.filter((r) => r.verdict === "junk").length;
+  const visibleReviewCount = visibleRolls.filter((r) => r.verdict === "review").length;
 
   const hasActiveFilters =
     Boolean(searchQuery) ||
@@ -173,35 +203,43 @@ function VaultContent() {
     setFilter("all");
   };
 
+  // Tab counts reflect the active search/dropdown filters (not the tab itself),
+  // so they update as you narrow the view.
   const filterTabs: { mode: FilterMode; label: string; count: number; active: string }[] = [
     {
       mode: "all",
       label: COMPARISON_SCOPE_LABELS[scope],
-      count: baseGroups?.length || 0,
+      count: groupsMatchingFilters?.length || 0,
       active: "bg-gray-700 text-white",
     },
     {
       mode: "junk",
       label: "Has Junk",
-      count: baseGroups?.filter((g) => g.junkRecommendations.length > 0).length || 0,
+      count:
+        groupsMatchingFilters?.filter((g) => g.junkRecommendations.length > 0).length || 0,
       active: "bg-red-900/50 text-red-300",
     },
     {
       mode: "review",
       label: "Needs Review",
-      count: baseGroups?.filter((g) => g.reviewRecommendations.length > 0).length || 0,
+      count:
+        groupsMatchingFilters?.filter((g) => g.reviewRecommendations.length > 0).length ||
+        0,
       active: "bg-amber-900/50 text-amber-300",
     },
     {
       mode: "godrolls",
       label: "God Rolls",
-      count: baseGroups?.filter((g) => g.rolls.some((r) => r.isGodRoll)).length || 0,
+      count:
+        groupsMatchingFilters?.filter((g) => g.rolls.some((r) => r.isGodRoll)).length || 0,
       active: "bg-yellow-900/50 text-yellow-300",
     },
     {
       mode: "nowishlist",
       label: "Not in Wishlist",
-      count: baseGroups?.filter((g) => g.rolls.some((r) => r.usedFallback)).length || 0,
+      count:
+        groupsMatchingFilters?.filter((g) => g.rolls.some((r) => r.usedFallback)).length ||
+        0,
       active: "bg-purple-900/50 text-purple-300",
     },
   ];
@@ -286,10 +324,12 @@ function VaultContent() {
               ))}
             </div>
 
-            {/* Stats */}
-            <div className="mb-8">
-              <StatsBar analysis={analysis} mode={view} />
-            </div>
+            {/* Stats (armor renders its own inside ArmorView, where its filters live) */}
+            {view === "weapons" && (
+              <div className="mb-8">
+                <StatsBar analysis={analysis} visibleRolls={visibleRolls} />
+              </div>
+            )}
 
             {view === "weapons" ? (
               <>
@@ -455,8 +495,9 @@ function VaultContent() {
 
             {/* DIM tagging export for whatever is currently in view */}
             <DimTagPanel
-              rolls={visibleRolls}
+              items={visibleRolls}
               scopeLabel={`compared by ${COMPARISON_SCOPE_LABELS[scope].toLowerCase()}`}
+              isDemo={isDemo}
             />
 
             {/* Comparison Groups */}
@@ -488,16 +529,17 @@ function VaultContent() {
               </div>
             )}
 
-            {/* Cleanup Summary */}
-            {(analysis.junkCount > 0 || analysis.reviewCount > 0) && (
+            {/* Cleanup Summary — follows the current view */}
+            {(visibleJunkCount > 0 || visibleReviewCount > 0) && (
               <div className="mt-8 bg-red-950/20 border border-red-900/30 rounded-xl p-6 text-center">
                 <p className="text-red-400 font-semibold text-lg">
-                  {analysis.junkCount} weapon{analysis.junkCount !== 1 ? "s" : ""}{" "}
-                  safe to dismantle
-                  {analysis.reviewCount > 0 && (
+                  {visibleJunkCount} weapon{visibleJunkCount !== 1 ? "s" : ""}{" "}
+                  {hasActiveFilters || scope !== "all" ? "in view " : ""}safe to
+                  dismantle
+                  {visibleReviewCount > 0 && (
                     <span className="text-amber-400">
                       {" "}
-                      &middot; {analysis.reviewCount} to review
+                      &middot; {visibleReviewCount} to review
                     </span>
                   )}
                 </p>
@@ -511,7 +553,7 @@ function VaultContent() {
             )}
               </>
             ) : analysis.armor ? (
-              <ArmorView armor={analysis.armor} />
+              <ArmorView armor={analysis.armor} isDemo={isDemo} />
             ) : (
               <div className="text-center py-16">
                 <p className="text-gray-500">
@@ -546,7 +588,9 @@ export default function VaultPage() {
         </div>
       }
     >
-      <VaultContent />
+      <DimTagOverridesProvider>
+        <VaultContent />
+      </DimTagOverridesProvider>
     </Suspense>
   );
 }
