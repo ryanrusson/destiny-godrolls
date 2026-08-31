@@ -66,6 +66,22 @@ export function buildDimNote(item: DimTaggable): string | undefined {
     : note;
 }
 
+/**
+ * Apply the user's manual tag choices over the analyzer's suggestions.
+ * Overridden items get a "Manually tagged" reason so the DIM note doesn't
+ * carry a rationale for a verdict the user rejected.
+ */
+export function applyDimTagOverrides<T extends DimTaggable>(
+  items: T[],
+  overrides: Record<string, DimTag>
+): T[] {
+  return items.map((item) => {
+    const override = overrides[item.itemInstanceId];
+    if (!override || override === item.suggestedTag) return item;
+    return { ...item, suggestedTag: override, reasons: ["Manually tagged"] };
+  });
+}
+
 /** Turn analyzed items into DIM Sync tag annotations. */
 export function buildDimAnnotations(items: DimTaggable[]): DimItemAnnotation[] {
   return items.map((item) => ({

@@ -2,6 +2,7 @@
 
 import { ArmorPiece, ARCHETYPE_STATS, ARMOR_SLOT_LABELS, CLASS_NAMES } from "@/lib/types";
 import { bungieIconUrl } from "@/lib/bungie-api";
+import DimTagBadge from "./DimTagBadge";
 
 interface ArmorCardProps {
   piece: ArmorPiece;
@@ -127,6 +128,8 @@ export default function ArmorCard({ piece }: ArmorCardProps) {
 
         <div className="flex flex-col items-end gap-1">
           {verdictBadge(piece)}
+          {/* DIM tag — click to override before syncing */}
+          <DimTagBadge item={piece} />
           <span className="text-xs text-gray-500">
             {locationLabels[piece.location] || piece.location}
           </span>

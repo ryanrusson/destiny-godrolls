@@ -6,6 +6,10 @@ import Header from "@/components/Header";
 import StatsBar from "@/components/StatsBar";
 import ComparisonGroupCard from "@/components/ComparisonGroupCard";
 import DimTagPanel from "@/components/DimTagPanel";
+import {
+  DimTagOverridesProvider,
+  useDimTagOverrides,
+} from "@/components/DimTagContext";
 import ArmorView from "@/components/ArmorView";
 import {
   ComparisonScope,
@@ -44,6 +48,7 @@ function groupsForScope(
 
 function VaultContent() {
   const searchParams = useSearchParams();
+  const { overrides } = useDimTagOverrides();
   const isDemo = searchParams.get("demo") === "true";
 
   const [analysis, setAnalysis] = useState<VaultAnalysis | null>(null);
@@ -143,7 +148,12 @@ function VaultContent() {
       return false;
 
     // Suggested DIM tag dropdown
-    if (tagFilter !== "all" && !group.rolls.some((r) => r.suggestedTag === tagFilter))
+    if (
+      tagFilter !== "all" &&
+      !group.rolls.some(
+        (r) => (overrides[r.itemInstanceId] ?? r.suggestedTag) === tagFilter
+      )
+    )
       return false;
 
     return true;
@@ -547,7 +557,9 @@ export default function VaultPage() {
         </div>
       }
     >
-      <VaultContent />
+      <DimTagOverridesProvider>
+        <VaultContent />
+      </DimTagOverridesProvider>
     </Suspense>
   );
 }

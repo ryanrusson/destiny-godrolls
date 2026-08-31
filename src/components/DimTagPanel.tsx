@@ -9,6 +9,7 @@ import {
   DIM_TAG_STYLES,
 } from "@/lib/types";
 import {
+  applyDimTagOverrides,
   buildDimAnnotations,
   buildDimQuery,
   DimItemAnnotation,
@@ -16,6 +17,7 @@ import {
   DIM_NOTE_PREFIX,
   instanceIdsByTag,
 } from "@/lib/dim-tags";
+import { useDimTagOverrides } from "./DimTagContext";
 
 interface DimTagPanelProps {
   /** Every item currently in scope — the panel exports what you're looking at */
@@ -94,7 +96,7 @@ type SyncState =
  * tag's search query (`id:… or id:…`) can be copied for manual bulk tagging.
  */
 export default function DimTagPanel({
-  items,
+  items: suggestedItems,
   scopeLabel,
   itemNoun = "weapon",
   isDemo = false,
@@ -104,6 +106,16 @@ export default function DimTagPanel({
   const [copyFailed, setCopyFailed] = useState(false);
   const [sync, setSync] = useState<SyncState>({ step: "idle" });
   const [overwrite, setOverwrite] = useState(false);
+
+  // The user's manual tag choices (made on the item cards) win everywhere:
+  // the counts, the copy queries, and the sync all use the effective tags.
+  const { overrides } = useDimTagOverrides();
+  const items = applyDimTagOverrides(suggestedItems, overrides);
+  const overrideCount = suggestedItems.filter(
+    (item) =>
+      overrides[item.itemInstanceId] !== undefined &&
+      overrides[item.itemInstanceId] !== item.suggestedTag
+  ).length;
 
   const byTag = instanceIdsByTag(items);
   const tagsWithItems = DIM_TAGS.filter((tag) => byTag[tag].length > 0);
@@ -213,10 +225,15 @@ export default function DimTagPanel({
         <div className="px-5 pb-5 pt-1 border-t border-gray-800 space-y-3">
           <p className="text-xs text-gray-500">
             Suggested tags for the {items.length} {itemNoun}
-            {items.length !== 1 ? "s" : ""} currently in view ({scopeLabel}).
-            Sync them straight into DIM, or copy a query, paste it into
-            DIM&apos;s search bar, and bulk-tag the results from the item
-            actions menu.
+            {items.length !== 1 ? "s" : ""} currently in view ({scopeLabel})
+            {overrideCount > 0 && (
+              <span className="text-sky-400">
+                , including {overrideCount} you set manually
+              </span>
+            )}
+            . Click any tag on a card to change it. Sync the tags straight into
+            DIM, or copy a query, paste it into DIM&apos;s search bar, and
+            bulk-tag the results from the item actions menu.
           </p>
 
           {/* Direct DIM Sync */}
