@@ -4,13 +4,43 @@ import { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import StatsBar from "@/components/StatsBar";
-import DuplicateGroup from "@/components/DuplicateGroup";
+import ComparisonGroupCard from "@/components/ComparisonGroupCard";
+import DimTagPanel from "@/components/DimTagPanel";
 import ArmorView from "@/components/ArmorView";
-import { VaultAnalysis, DAMAGE_TYPES } from "@/lib/types";
+import {
+  ComparisonScope,
+  DimTag,
+  VaultAnalysis,
+  WeaponGroup,
+  COMPARISON_SCOPE_HINTS,
+  COMPARISON_SCOPE_LABELS,
+  DAMAGE_TYPES,
+  DIM_TAGS,
+  DIM_TAG_LABELS,
+} from "@/lib/types";
 import { DEMO_ANALYSIS } from "@/lib/demo-data";
 
-type FilterMode = "all" | "junk" | "godrolls" | "nowishlist";
+type FilterMode = "all" | "junk" | "review" | "godrolls" | "nowishlist";
 type ViewMode = "weapons" | "armor";
+
+const SCOPE_OPTIONS: ComparisonScope[] = ["duplicates", "all", "archetype", "type"];
+
+function groupsForScope(
+  analysis: VaultAnalysis | null,
+  scope: ComparisonScope
+): WeaponGroup[] | undefined {
+  if (!analysis) return undefined;
+  switch (scope) {
+    case "duplicates":
+      return analysis.duplicateGroups;
+    case "all":
+      return analysis.allWeaponGroups;
+    case "archetype":
+      return analysis.archetypeGroups;
+    case "type":
+      return analysis.typeGroups;
+  }
+}
 
 function VaultContent() {
   const searchParams = useSearchParams();
@@ -24,7 +54,8 @@ function VaultContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [weaponTypeFilter, setWeaponTypeFilter] = useState<string>("all");
   const [damageTypeFilter, setDamageTypeFilter] = useState<string>("all");
-  const [showAllWeapons, setShowAllWeapons] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string>("all");
+  const [scope, setScope] = useState<ComparisonScope>("duplicates");
   const [displayName, setDisplayName] = useState<string>("");
 
   const fetchData = useCallback(async () => {
@@ -66,46 +97,114 @@ function VaultContent() {
     fetchData();
   }, [fetchData]);
 
-  // Choose which groups to display based on toggle
-  const baseGroups = showAllWeapons
-    ? analysis?.allWeaponGroups
-    : analysis?.duplicateGroups;
+  // Comparison scope decides how weapons are grouped against each other
+  const baseGroups = groupsForScope(analysis, scope);
 
   // Derive unique weapon types and damage types for dropdown options
   const weaponTypes = baseGroups
     ? [...new Set(baseGroups.map((g) => g.weaponType))].sort()
     : [];
   const damageTypes = baseGroups
-    ? [...new Set(baseGroups.map((g) => g.damageType))].sort()
+    ? [...new Set(baseGroups.flatMap((g) => g.rolls.map((r) => r.damageType)))].sort(
+        (a, b) => a - b
+      )
     : [];
 
   const filteredGroups = baseGroups?.filter((group) => {
     // Status filter
     if (filter === "junk" && group.junkRecommendations.length === 0) return false;
+    if (filter === "review" && group.reviewRecommendations.length === 0) return false;
     if (filter === "godrolls" && !group.rolls.some((r) => r.isGodRoll)) return false;
     if (filter === "nowishlist" && !group.rolls.some((r) => r.usedFallback)) return false;
 
     // Text search
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      const nameMatch = group.weaponName.toLowerCase().includes(q);
+      const labelMatch = group.label.toLowerCase().includes(q);
       const typeMatch = group.weaponType.toLowerCase().includes(q);
+      const rollNameMatch = group.rolls.some((r) => r.name.toLowerCase().includes(q));
       const perkMatch = group.rolls.some((r) =>
         r.perks.some((col) =>
           col.activePerks.some((p) => p.name.toLowerCase().includes(q))
         )
       );
-      if (!nameMatch && !typeMatch && !perkMatch) return false;
+      if (!labelMatch && !typeMatch && !rollNameMatch && !perkMatch) return false;
     }
 
     // Weapon type dropdown
     if (weaponTypeFilter !== "all" && group.weaponType !== weaponTypeFilter) return false;
 
-    // Damage type dropdown
-    if (damageTypeFilter !== "all" && String(group.damageType) !== damageTypeFilter) return false;
+    // Damage type dropdown — cross-weapon groups can mix elements, so match on
+    // the rolls rather than the group's representative element.
+    if (
+      damageTypeFilter !== "all" &&
+      !group.rolls.some((r) => String(r.damageType) === damageTypeFilter)
+    )
+      return false;
+
+    // Suggested DIM tag dropdown
+    if (tagFilter !== "all" && !group.rolls.some((r) => r.suggestedTag === tagFilter))
+      return false;
 
     return true;
   });
+
+  // Deduplicate rolls for the DIM export: cross-weapon scopes can list the
+  // same instance in more than one group.
+  const visibleRolls = [
+    ...new Map(
+      (filteredGroups ?? [])
+        .flatMap((g) => g.rolls)
+        .map((roll) => [roll.itemInstanceId, roll])
+    ).values(),
+  ];
+
+  const hasActiveFilters =
+    Boolean(searchQuery) ||
+    weaponTypeFilter !== "all" ||
+    damageTypeFilter !== "all" ||
+    tagFilter !== "all";
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setWeaponTypeFilter("all");
+    setDamageTypeFilter("all");
+    setTagFilter("all");
+    setFilter("all");
+  };
+
+  const filterTabs: { mode: FilterMode; label: string; count: number; active: string }[] = [
+    {
+      mode: "all",
+      label: COMPARISON_SCOPE_LABELS[scope],
+      count: baseGroups?.length || 0,
+      active: "bg-gray-700 text-white",
+    },
+    {
+      mode: "junk",
+      label: "Has Junk",
+      count: baseGroups?.filter((g) => g.junkRecommendations.length > 0).length || 0,
+      active: "bg-red-900/50 text-red-300",
+    },
+    {
+      mode: "review",
+      label: "Needs Review",
+      count: baseGroups?.filter((g) => g.reviewRecommendations.length > 0).length || 0,
+      active: "bg-amber-900/50 text-amber-300",
+    },
+    {
+      mode: "godrolls",
+      label: "God Rolls",
+      count: baseGroups?.filter((g) => g.rolls.some((r) => r.isGodRoll)).length || 0,
+      active: "bg-yellow-900/50 text-yellow-300",
+    },
+    {
+      mode: "nowishlist",
+      label: "Not in Wishlist",
+      count: baseGroups?.filter((g) => g.rolls.some((r) => r.usedFallback)).length || 0,
+      active: "bg-purple-900/50 text-purple-300",
+    },
+  ];
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -260,85 +359,66 @@ function VaultContent() {
                   ))}
                 </select>
 
-                {/* All weapons toggle */}
-                <button
-                  onClick={() => setShowAllWeapons(!showAllWeapons)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap ${
-                    showAllWeapons
-                      ? "bg-blue-900/50 border-blue-700 text-blue-300"
-                      : "bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200"
-                  }`}
+                {/* Suggested DIM tag dropdown */}
+                <select
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
+                  className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-gray-600 focus:ring-1 focus:ring-gray-600 transition-colors cursor-pointer"
                 >
-                  {showAllWeapons ? "All Weapons" : "Duplicates Only"}
-                </button>
+                  <option value="all">All DIM Tags</option>
+                  {DIM_TAGS.map((tag) => (
+                    <option key={tag} value={tag}>
+                      {DIM_TAG_LABELS[tag]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Comparison scope */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <span className="text-xs uppercase tracking-wider text-gray-500 shrink-0">
+                  Compare by
+                </span>
+                <div className="flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1 w-fit flex-wrap">
+                  {SCOPE_OPTIONS.map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => setScope(option)}
+                      title={COMPARISON_SCOPE_HINTS[option]}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                        scope === option
+                          ? "bg-gray-700 text-white"
+                          : "text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      {COMPARISON_SCOPE_LABELS[option]}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs text-gray-600 sm:ml-1">
+                  {COMPARISON_SCOPE_HINTS[scope]}
+                </span>
               </div>
 
               {/* Status filter tabs + refresh */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setFilter("all")}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      filter === "all"
-                        ? "bg-gray-700 text-white"
-                        : "text-gray-500 hover:text-gray-300"
-                    }`}
-                  >
-                    {showAllWeapons ? "All Weapons" : "All Duplicates"} ({baseGroups?.length || 0})
-                  </button>
-                  <button
-                    onClick={() => setFilter("junk")}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      filter === "junk"
-                        ? "bg-red-900/50 text-red-300"
-                        : "text-gray-500 hover:text-gray-300"
-                    }`}
-                  >
-                    Has Junk (
-                    {
-                      baseGroups?.filter(
-                        (g) => g.junkRecommendations.length > 0
-                      ).length || 0
-                    }
-                    )
-                  </button>
-                  <button
-                    onClick={() => setFilter("godrolls")}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      filter === "godrolls"
-                        ? "bg-yellow-900/50 text-yellow-300"
-                        : "text-gray-500 hover:text-gray-300"
-                    }`}
-                  >
-                    God Rolls (
-                    {
-                      baseGroups?.filter((g) =>
-                        g.rolls.some((r) => r.isGodRoll)
-                      ).length || 0
-                    }
-                    )
-                  </button>
-                  <button
-                    onClick={() => setFilter("nowishlist")}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      filter === "nowishlist"
-                        ? "bg-purple-900/50 text-purple-300"
-                        : "text-gray-500 hover:text-gray-300"
-                    }`}
-                  >
-                    Not in Wishlist (
-                    {
-                      baseGroups?.filter((g) =>
-                        g.rolls.some((r) => r.usedFallback)
-                      ).length || 0
-                    }
-                    )
-                  </button>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {filterTabs.map((tab) => (
+                    <button
+                      key={tab.mode}
+                      onClick={() => setFilter(tab.mode)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        filter === tab.mode ? tab.active : "text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      {tab.label} ({tab.count})
+                    </button>
+                  ))}
                 </div>
 
                 <div className="flex items-center gap-3">
                   {/* Result count */}
-                  {(searchQuery || weaponTypeFilter !== "all" || damageTypeFilter !== "all") && (
+                  {hasActiveFilters && (
                     <span className="text-xs text-gray-500">
                       {filteredGroups?.length || 0} result{filteredGroups?.length !== 1 ? "s" : ""}
                     </span>
@@ -373,32 +453,33 @@ function VaultContent() {
               </div>
             </div>
 
-            {/* Duplicate Groups */}
+            {/* DIM tagging export for whatever is currently in view */}
+            <DimTagPanel
+              rolls={visibleRolls}
+              scopeLabel={`compared by ${COMPARISON_SCOPE_LABELS[scope].toLowerCase()}`}
+            />
+
+            {/* Comparison Groups */}
             {filteredGroups && filteredGroups.length > 0 ? (
               <div className="space-y-6">
                 {filteredGroups.map((group) => (
-                  <DuplicateGroup key={group.weaponHash} group={group} />
+                  <ComparisonGroupCard key={group.groupKey} group={group} />
                 ))}
               </div>
             ) : (
               <div className="text-center py-16">
                 <p className="text-gray-500">
-                  {searchQuery || weaponTypeFilter !== "all" || damageTypeFilter !== "all"
-                    ? `No weapons match "${searchQuery || ""}"${weaponTypeFilter !== "all" ? ` in ${weaponTypeFilter}` : ""}${damageTypeFilter !== "all" ? ` (${DAMAGE_TYPES[Number(damageTypeFilter)]?.name || ""})` : ""}`
+                  {hasActiveFilters
+                    ? `No weapons match "${searchQuery || ""}"${weaponTypeFilter !== "all" ? ` in ${weaponTypeFilter}` : ""}${damageTypeFilter !== "all" ? ` (${DAMAGE_TYPES[Number(damageTypeFilter)]?.name || ""})` : ""}${tagFilter !== "all" ? ` tagged ${DIM_TAG_LABELS[tagFilter as DimTag]}` : ""}`
                     : filter === "all"
-                      ? showAllWeapons
-                        ? "No weapons found in your vault!"
-                        : "No duplicate weapons found in your vault!"
+                      ? scope === "duplicates"
+                        ? "No duplicate weapons found in your vault!"
+                        : "No weapons found in your vault!"
                       : "No weapons match this filter."}
                 </p>
-                {(searchQuery || weaponTypeFilter !== "all" || damageTypeFilter !== "all") && (
+                {(hasActiveFilters || filter !== "all") && (
                   <button
-                    onClick={() => {
-                      setSearchQuery("");
-                      setWeaponTypeFilter("all");
-                      setDamageTypeFilter("all");
-                      setFilter("all");
-                    }}
+                    onClick={clearFilters}
                     className="mt-3 text-sm text-gray-400 hover:text-gray-200 underline"
                   >
                     Clear all filters
@@ -407,17 +488,24 @@ function VaultContent() {
               </div>
             )}
 
-            {/* Junk Summary */}
-            {analysis.junkCount > 0 && (
+            {/* Cleanup Summary */}
+            {(analysis.junkCount > 0 || analysis.reviewCount > 0) && (
               <div className="mt-8 bg-red-950/20 border border-red-900/30 rounded-xl p-6 text-center">
                 <p className="text-red-400 font-semibold text-lg">
                   {analysis.junkCount} weapon{analysis.junkCount !== 1 ? "s" : ""}{" "}
                   safe to dismantle
+                  {analysis.reviewCount > 0 && (
+                    <span className="text-amber-400">
+                      {" "}
+                      &middot; {analysis.reviewCount} to review
+                    </span>
+                  )}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  These are duplicate copies that don&apos;t match any community god
-                  roll recommendations. The best copy of each weapon has been
-                  marked to keep.
+                  Junk is duplicate copies that don&apos;t match any community god
+                  roll recommendation — the best copy of each weapon is always kept.
+                  Review is weapons that several similar rolls in your vault
+                  outclass; those are a judgement call, so nothing is auto-junked.
                 </p>
               </div>
             )}

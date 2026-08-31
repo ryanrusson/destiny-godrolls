@@ -1,4 +1,5 @@
-import { VaultAnalysis, DuplicateGroup, WeaponRoll } from "./types";
+import { VaultAnalysis, WeaponRoll, WeaponSlot, WeaponStat } from "./types";
+import { compareWeapons } from "./weapon-comparison";
 import { DEMO_ARMOR_ANALYSIS } from "./demo-armor-data";
 
 // Demo data to showcase the app without needing a Bungie API key
@@ -40,29 +41,77 @@ const DEMO_ICONS = {
   },
 };
 
-function makeRoll(overrides: Partial<WeaponRoll> & { itemInstanceId: string; itemHash: number; name: string }): WeaponRoll {
+/**
+ * Slot, intrinsic frame, and rarity per demo weapon, so the archetype and
+ * weapon-type comparisons group these rolls the way the live analyzer would.
+ */
+const DEMO_WEAPON_META: Record<
+  number,
+  { slot: WeaponSlot; frame?: string; isExotic?: boolean }
+> = {
+  372697604: { slot: "kinetic", frame: "Precision Frame" }, // Austringer
+  2171478765: { slot: "kinetic", frame: "Precision Frame" }, // Fatebringer
+  3186018373: { slot: "kinetic", frame: "Precision Frame" }, // Eyasluna
+  347366834: { slot: "kinetic", isExotic: true }, // Ace of Spades
+  2714220251: { slot: "energy", frame: "Lightweight Frame" }, // CALUS Mini-Tool
+  3341893443: { slot: "energy", frame: "Adaptive Frame" }, // Funnelweb
+  46524085: { slot: "kinetic", isExotic: true }, // Osteo Striga
+  613334176: { slot: "energy", frame: "Wave Frame" }, // Forbearance
+  1399109800: { slot: "energy", frame: "Precision Frame" }, // Refurbished A499
+  768621510: { slot: "energy", frame: "Precision Frame" }, // Deliverance
+  999767358: { slot: "power", frame: "Precision Frame" }, // Cataclysmic
+  1911060537: { slot: "power", frame: "Precision Frame" }, // Taipan-4fr
+  14194600: { slot: "power", isExotic: true }, // Witherhoard
+};
+
+const BASE_STATS: WeaponStat[] = [
+  { statHash: 4284893193, name: "RPM", value: 140 },
+  { statHash: 4043523819, name: "Impact", value: 84 },
+  { statHash: 1240592695, name: "Range", value: 55 },
+  { statHash: 155624089, name: "Stability", value: 46 },
+  { statHash: 943549884, name: "Handling", value: 52 },
+  { statHash: 4188031367, name: "Reload Speed", value: 48 },
+  { statHash: 1345609583, name: "Aim Assistance", value: 68 },
+  { statHash: 3555269338, name: "Zoom", value: 14 },
+];
+
+/**
+ * @param statTweaks per-roll stat deltas by name — copies of the same weapon
+ *        differ by barrel/magazine choice, and the comparison table needs
+ *        something to actually compare.
+ */
+function makeRoll(
+  overrides: Partial<WeaponRoll> & { itemInstanceId: string; itemHash: number; name: string },
+  statTweaks: Record<string, number> = {}
+): WeaponRoll {
+  const meta = DEMO_WEAPON_META[overrides.itemHash];
+  const intrinsic = overrides.perks?.find((c) => c.columnIndex === 0)?.selectedPerk?.name;
+  const stats = BASE_STATS.map((stat) => ({
+    ...stat,
+    value: stat.value + (statTweaks[stat.name] ?? 0),
+  }));
+
   return {
     icon: "",
     tierName: "Legendary",
     typeName: "Auto Rifle",
     damageType: 1,
     powerLevel: 1810,
-    stats: [
-      { statHash: 4284893193, name: "RPM", value: 140 },
-      { statHash: 4043523819, name: "Impact", value: 84 },
-      { statHash: 1240592695, name: "Range", value: 55 },
-      { statHash: 155624089, name: "Stability", value: 46 },
-      { statHash: 943549884, name: "Handling", value: 52 },
-      { statHash: 4188031367, name: "Reload Speed", value: 48 },
-      { statHash: 1345609583, name: "Aim Assistance", value: 68 },
-      { statHash: 3555269338, name: "Zoom", value: 14 },
-    ],
+    stats,
     perks: [],
     isGodRoll: false,
     isRecommended: false,
     wishlistNotes: [],
     matchedPerkCount: 0,
     location: "vault",
+    isExotic: meta?.isExotic ?? false,
+    slot: meta?.slot ?? "kinetic",
+    frame: intrinsic ?? meta?.frame,
+    // Recomputed by compareWeapons() below.
+    score: 0,
+    verdict: "review",
+    reasons: [],
+    suggestedTag: "archive",
     ...overrides,
   };
 }
@@ -86,8 +135,8 @@ const cantataGodRoll: WeaponRoll = makeRoll({
   perks: [
     {
       columnIndex: 0,
-      activePerks: [{ perkHash: 1, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false }],
-      selectedPerk: { perkHash: 1, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false },
+      activePerks: [{ perkHash: 1, name: "Precision Frame", icon: `${B}/common/destiny2_content/icons/e9dd736124e8ef94048901a279a5bb18.png`, description: "This weapon's recoil pattern is more predictably vertical", isActive: true, isWishlistPerk: false }],
+      selectedPerk: { perkHash: 1, name: "Precision Frame", icon: `${B}/common/destiny2_content/icons/e9dd736124e8ef94048901a279a5bb18.png`, description: "This weapon's recoil pattern is more predictably vertical", isActive: true, isWishlistPerk: false },
     },
     {
       columnIndex: 1,
@@ -125,7 +174,7 @@ const cantataGodRoll: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 5, name: "Rangefinder", icon: `${B}/common/destiny2_content/icons/74270d52bec24f1f5f4c987f5f37fce9.png`, description: "Aiming increases range", isActive: true, isWishlistPerk: true },
     },
   ],
-});
+}, { Range: 8, Stability: 5, Handling: -4 });
 
 const cantataJunk1: WeaponRoll = makeRoll({
   itemInstanceId: "demo-002",
@@ -136,7 +185,7 @@ const cantataJunk1: WeaponRoll = makeRoll({
   watermark: DEMO_ICONS.austringer.watermark,
   typeName: "Hand Cannon",
   damageType: 1,
-  powerLevel: 1805,
+  powerLevel: 1820,
   isGodRoll: false,
   isRecommended: false,
   matchedPerkCount: 1,
@@ -144,8 +193,8 @@ const cantataJunk1: WeaponRoll = makeRoll({
   perks: [
     {
       columnIndex: 0,
-      activePerks: [{ perkHash: 1, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false }],
-      selectedPerk: { perkHash: 1, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false },
+      activePerks: [{ perkHash: 1, name: "Precision Frame", icon: `${B}/common/destiny2_content/icons/e9dd736124e8ef94048901a279a5bb18.png`, description: "This weapon's recoil pattern is more predictably vertical", isActive: true, isWishlistPerk: false }],
+      selectedPerk: { perkHash: 1, name: "Precision Frame", icon: `${B}/common/destiny2_content/icons/e9dd736124e8ef94048901a279a5bb18.png`, description: "This weapon's recoil pattern is more predictably vertical", isActive: true, isWishlistPerk: false },
     },
     {
       columnIndex: 1,
@@ -168,7 +217,7 @@ const cantataJunk1: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 13, name: "Thresh", icon: `${B}/common/destiny2_content/icons/7f9dcf3bd4a8a4e0d2d0922827f038c9.png`, description: "Kills grant a small amount of Super energy", isActive: true, isWishlistPerk: false },
     },
   ],
-});
+}, { Range: -6, Stability: -3, Handling: 9, "Reload Speed": 6 });
 
 const cantataJunk2: WeaponRoll = makeRoll({
   itemInstanceId: "demo-003",
@@ -187,8 +236,8 @@ const cantataJunk2: WeaponRoll = makeRoll({
   perks: [
     {
       columnIndex: 0,
-      activePerks: [{ perkHash: 1, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false }],
-      selectedPerk: { perkHash: 1, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false },
+      activePerks: [{ perkHash: 1, name: "Precision Frame", icon: `${B}/common/destiny2_content/icons/e9dd736124e8ef94048901a279a5bb18.png`, description: "This weapon's recoil pattern is more predictably vertical", isActive: true, isWishlistPerk: false }],
+      selectedPerk: { perkHash: 1, name: "Precision Frame", icon: `${B}/common/destiny2_content/icons/e9dd736124e8ef94048901a279a5bb18.png`, description: "This weapon's recoil pattern is more predictably vertical", isActive: true, isWishlistPerk: false },
     },
     {
       columnIndex: 1,
@@ -211,7 +260,7 @@ const cantataJunk2: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 23, name: "Unrelenting", icon: `${B}/common/destiny2_content/icons/1e5843177c71ae3f2a4770d01a2f3813.png`, description: "Rapidly defeating targets triggers health regen", isActive: true, isWishlistPerk: false },
     },
   ],
-});
+}, { Range: 2, Stability: -8, Handling: 3 });
 
 const callusGodRoll: WeaponRoll = makeRoll({
   itemInstanceId: "demo-004",
@@ -256,7 +305,7 @@ const callusGodRoll: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 34, name: "Incandescent", icon: `${B}/common/destiny2_content/icons/22ed4a2cd5a0eb129a14ce77db49373f.png`, description: "Defeating targets spreads scorch to nearby enemies", isActive: true, isWishlistPerk: true },
     },
   ],
-});
+}, { Range: 6, Stability: 9, "Reload Speed": 4 });
 
 const callusJunk: WeaponRoll = makeRoll({
   itemInstanceId: "demo-005",
@@ -299,7 +348,7 @@ const callusJunk: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 43, name: "Surrounded", icon: `${B}/common/destiny2_content/icons/979881b68ca7839267c9aef5aea2b0ce.png`, description: "Increased damage when near many enemies", isActive: true, isWishlistPerk: false },
     },
   ],
-});
+}, { Range: -9, Stability: 2, Handling: 5 });
 
 const cataclysmic1: WeaponRoll = makeRoll({
   itemInstanceId: "demo-006",
@@ -343,7 +392,7 @@ const cataclysmic1: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 54, name: "Bait and Switch", icon: `${B}/common/destiny2_content/icons/bc91e95edfbc9163dd88339a93b66913.png`, description: "Dealing damage with all weapons briefly increases this weapon's damage", isActive: true, isWishlistPerk: true },
     },
   ],
-});
+}, { Range: 11, Stability: 7, "Reload Speed": -5 });
 
 const cataclysmic2: WeaponRoll = makeRoll({
   itemInstanceId: "demo-007",
@@ -386,7 +435,7 @@ const cataclysmic2: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 63, name: "Vorpal Weapon", icon: `${B}/common/destiny2_content/icons/bc5130b227ee577f2678ec2d2c97bf4a.png`, description: "Increased damage against bosses and vehicles", isActive: true, isWishlistPerk: true },
     },
   ],
-});
+}, { Range: -4, Stability: 3, "Reload Speed": 8 });
 
 const cataclysmic3: WeaponRoll = makeRoll({
   itemInstanceId: "demo-008",
@@ -429,7 +478,7 @@ const cataclysmic3: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 73, name: "Adrenaline Junkie", icon: `${B}/common/destiny2_content/icons/6f8bde03140b53e6dc583ada1aeaa51d.png`, description: "Grenade kills give this weapon increased damage", isActive: true, isWishlistPerk: false },
     },
   ],
-});
+}, { Range: 1, Stability: -6, Handling: 7 });
 
 const funnelWeb1: WeaponRoll = makeRoll({
   itemInstanceId: "demo-009",
@@ -449,8 +498,8 @@ const funnelWeb1: WeaponRoll = makeRoll({
   perks: [
     {
       columnIndex: 0,
-      activePerks: [{ perkHash: 80, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false }],
-      selectedPerk: { perkHash: 80, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false },
+      activePerks: [{ perkHash: 80, name: "Adaptive Frame", icon: `${B}/common/destiny2_content/icons/6db8cd21c2b3e6fffeb6f111d6c70dd2.png`, description: "A well-rounded grip, reliable and sturdy", isActive: true, isWishlistPerk: false }],
+      selectedPerk: { perkHash: 80, name: "Adaptive Frame", icon: `${B}/common/destiny2_content/icons/6db8cd21c2b3e6fffeb6f111d6c70dd2.png`, description: "A well-rounded grip, reliable and sturdy", isActive: true, isWishlistPerk: false },
     },
     {
       columnIndex: 1,
@@ -473,7 +522,7 @@ const funnelWeb1: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 84, name: "Frenzy", icon: `${B}/common/destiny2_content/icons/23e06f4ced1b3e6476f342978ff5bb37.png`, description: "Sustained combat boosts damage, handling, and reload", isActive: true, isWishlistPerk: true },
     },
   ],
-});
+}, { Range: 7, Stability: 6, Handling: 2 });
 
 const funnelWeb2: WeaponRoll = makeRoll({
   itemInstanceId: "demo-010",
@@ -492,8 +541,8 @@ const funnelWeb2: WeaponRoll = makeRoll({
   perks: [
     {
       columnIndex: 0,
-      activePerks: [{ perkHash: 80, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false }],
-      selectedPerk: { perkHash: 80, name: "Aggressive Frame", icon: `${B}/common/destiny2_content/icons/64209c4fd20513b33109c374179d0958.png`, description: "High damage, slow fire rate", isActive: true, isWishlistPerk: false },
+      activePerks: [{ perkHash: 80, name: "Adaptive Frame", icon: `${B}/common/destiny2_content/icons/6db8cd21c2b3e6fffeb6f111d6c70dd2.png`, description: "A well-rounded grip, reliable and sturdy", isActive: true, isWishlistPerk: false }],
+      selectedPerk: { perkHash: 80, name: "Adaptive Frame", icon: `${B}/common/destiny2_content/icons/6db8cd21c2b3e6fffeb6f111d6c70dd2.png`, description: "A well-rounded grip, reliable and sturdy", isActive: true, isWishlistPerk: false },
     },
     {
       columnIndex: 1,
@@ -516,7 +565,7 @@ const funnelWeb2: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 93, name: "Adrenaline Junkie", icon: `${B}/common/destiny2_content/icons/6f8bde03140b53e6dc583ada1aeaa51d.png`, description: "Grenade kills give increased damage", isActive: true, isWishlistPerk: false },
     },
   ],
-});
+}, { Range: -8, Stability: -2, Handling: 10 });
 
 const forbearance1: WeaponRoll = makeRoll({
   itemInstanceId: "demo-011",
@@ -560,7 +609,7 @@ const forbearance1: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 104, name: "Chain Reaction", icon: `${B}/common/destiny2_content/icons/d17a60978288581d13a4aab6b9fc2b0e.png`, description: "Each final blow creates an elemental explosion", isActive: true, isWishlistPerk: true },
     },
   ],
-});
+}, { "Blast Radius": 0, Handling: 6, "Reload Speed": 9 });
 
 const forbearance2: WeaponRoll = makeRoll({
   itemInstanceId: "demo-012",
@@ -603,7 +652,7 @@ const forbearance2: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 113, name: "Disruption Break", icon: `${B}/common/destiny2_content/icons/45b57ce27fa0213218c7cb8f2253c517.png`, description: "Breaking shields grants bonus kinetic damage", isActive: true, isWishlistPerk: false },
     },
   ],
-});
+}, { Handling: -5, "Reload Speed": -7 });
 
 // Fallback-scored weapon (not in any wishlist)
 const refurbishedGood: WeaponRoll = makeRoll({
@@ -663,7 +712,7 @@ const refurbishedGood: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 207, name: "Rampage", icon: `${B}/common/destiny2_content/icons/8976ead57430e4f5f8af1b3005de4f83.png`, description: "Kills grant increased damage. Stacks 3x.", isActive: true, isWishlistPerk: false },
     },
   ],
-});
+}, { Range: 9, Stability: 8, Handling: -3 });
 
 const refurbishedBad: WeaponRoll = makeRoll({
   itemInstanceId: "demo-014",
@@ -710,74 +759,7 @@ const refurbishedBad: WeaponRoll = makeRoll({
       selectedPerk: { perkHash: 213, name: "Zen Moment", icon: `${B}/common/destiny2_content/icons/9650a58cd3a439bf3b53a53dbc8122a0.png`, description: "Dealing damage increases stability", isActive: true, isWishlistPerk: false },
     },
   ],
-});
-
-// Build duplicate groups
-const austringerGroup: DuplicateGroup = {
-  weaponHash: 372697604,
-  weaponName: "Austringer",
-  weaponIcon: DEMO_ICONS.austringer.icon,
-  weaponType: "Hand Cannon",
-  damageType: 1,
-  rolls: [cantataGodRoll, cantataJunk1, cantataJunk2],
-  keepRecommendations: ["demo-001"],
-  junkRecommendations: ["demo-002", "demo-003"],
-};
-
-const calusGroup: DuplicateGroup = {
-  weaponHash: 2714220251,
-  weaponName: "CALUS Mini-Tool",
-  weaponIcon: DEMO_ICONS.calusMiniTool.icon,
-  weaponType: "Submachine Gun",
-  damageType: 3,
-  rolls: [callusGodRoll, callusJunk],
-  keepRecommendations: ["demo-004"],
-  junkRecommendations: ["demo-005"],
-};
-
-const cataclysmicGroup: DuplicateGroup = {
-  weaponHash: 999767358,
-  weaponName: "Cataclysmic",
-  weaponIcon: DEMO_ICONS.cataclysmic.icon,
-  weaponType: "Linear Fusion Rifle",
-  damageType: 3,
-  rolls: [cataclysmic1, cataclysmic2, cataclysmic3],
-  keepRecommendations: ["demo-006"],
-  junkRecommendations: ["demo-007", "demo-008"],
-};
-
-const funnelwebGroup: DuplicateGroup = {
-  weaponHash: 3341893443,
-  weaponName: "Funnelweb",
-  weaponIcon: DEMO_ICONS.funnelweb.icon,
-  weaponType: "Submachine Gun",
-  damageType: 4,
-  rolls: [funnelWeb1, funnelWeb2],
-  keepRecommendations: ["demo-009"],
-  junkRecommendations: ["demo-010"],
-};
-
-const forbearanceGroup: DuplicateGroup = {
-  weaponHash: 613334176,
-  weaponName: "Forbearance",
-  weaponIcon: DEMO_ICONS.forbearance.icon,
-  weaponType: "Grenade Launcher",
-  damageType: 2,
-  rolls: [forbearance1, forbearance2],
-  keepRecommendations: ["demo-011"],
-  junkRecommendations: ["demo-012"],
-};
-
-const refurbishedGroup: DuplicateGroup = {
-  weaponHash: 1399109800,
-  weaponName: "Refurbished A499",
-  weaponIcon: DEMO_ICONS.refurbishedA499.icon,
-  weaponType: "Auto Rifle",
-  damageType: 2,
-  rolls: [refurbishedGood, refurbishedBad],
-  keepRecommendations: ["demo-013"],
-  junkRecommendations: ["demo-014"],
-};
+}, { Range: -7, Stability: -9, Handling: 4 });
 
 // Single weapons (no duplicates) for "All Weapons" view
 const aceOfSpades: WeaponRoll = makeRoll({
@@ -796,17 +778,6 @@ const aceOfSpades: WeaponRoll = makeRoll({
   perks: [],
 });
 
-const aceGroup: DuplicateGroup = {
-  weaponHash: 347366834,
-  weaponName: "Ace of Spades",
-  weaponIcon: "",
-  weaponType: "Hand Cannon",
-  damageType: 1,
-  rolls: [aceOfSpades],
-  keepRecommendations: ["demo-single-001"],
-  junkRecommendations: [],
-};
-
 const deliverance: WeaponRoll = makeRoll({
   itemInstanceId: "demo-single-002",
   itemHash: 768621510,
@@ -821,17 +792,6 @@ const deliverance: WeaponRoll = makeRoll({
   location: "vault",
   perks: [],
 });
-
-const deliveranceGroup: DuplicateGroup = {
-  weaponHash: 768621510,
-  weaponName: "Deliverance",
-  weaponIcon: "",
-  weaponType: "Fusion Rifle",
-  damageType: 6,
-  rolls: [deliverance],
-  keepRecommendations: ["demo-single-002"],
-  junkRecommendations: [],
-};
 
 const osteoStriga: WeaponRoll = makeRoll({
   itemInstanceId: "demo-single-003",
@@ -848,17 +808,6 @@ const osteoStriga: WeaponRoll = makeRoll({
   perks: [],
 });
 
-const osteoGroup: DuplicateGroup = {
-  weaponHash: 46524085,
-  weaponName: "Osteo Striga",
-  weaponIcon: "",
-  weaponType: "Submachine Gun",
-  damageType: 1,
-  rolls: [osteoStriga],
-  keepRecommendations: ["demo-single-003"],
-  junkRecommendations: [],
-};
-
 const taipan: WeaponRoll = makeRoll({
   itemInstanceId: "demo-single-004",
   itemHash: 1911060537,
@@ -873,17 +822,6 @@ const taipan: WeaponRoll = makeRoll({
   location: "vault",
   perks: [],
 });
-
-const taipanGroup: DuplicateGroup = {
-  weaponHash: 1911060537,
-  weaponName: "Taipan-4fr",
-  weaponIcon: "",
-  weaponType: "Linear Fusion Rifle",
-  damageType: 7,
-  rolls: [taipan],
-  keepRecommendations: ["demo-single-004"],
-  junkRecommendations: [],
-};
 
 const witherhoard: WeaponRoll = makeRoll({
   itemInstanceId: "demo-single-005",
@@ -900,48 +838,63 @@ const witherhoard: WeaponRoll = makeRoll({
   perks: [],
 });
 
-const witherhoardGroup: DuplicateGroup = {
-  weaponHash: 14194600,
-  weaponName: "Witherhoard",
-  weaponIcon: "",
-  weaponType: "Grenade Launcher",
+// Two more Kinetic Precision Frame hand cannons, so the archetype comparison
+// has something to weigh Austringer against: one that holds its own, and one
+// that two better rolls outclass.
+const fatebringer: WeaponRoll = makeRoll({
+  itemInstanceId: "demo-single-006",
+  itemHash: 2171478765,
+  name: "Fatebringer",
+  typeName: "Hand Cannon",
   damageType: 1,
-  rolls: [witherhoard],
-  keepRecommendations: ["demo-single-005"],
-  junkRecommendations: [],
-};
+  powerLevel: 1809,
+  isRecommended: true,
+  matchedPerkCount: 3,
+  wishlistNotes: ["Explosive Payload + Firefly - the classic PvE roll"],
+  location: "vault",
+  perks: [],
+}, { Range: 4, Stability: 11, "Reload Speed": 3 });
 
-// All duplicate groups
-const allDuplicateGroups = [
-  cataclysmicGroup,
-  austringerGroup,
-  refurbishedGroup,
-  funnelwebGroup,
-  calusGroup,
-  forbearanceGroup,
+const eyasluna: WeaponRoll = makeRoll({
+  itemInstanceId: "demo-single-007",
+  itemHash: 3186018373,
+  name: "Eyasluna",
+  typeName: "Hand Cannon",
+  damageType: 1,
+  powerLevel: 1802,
+  matchedPerkCount: 1,
+  location: "vault",
+  perks: [],
+}, { Range: -5, Stability: -4, Handling: 6 });
+
+const DEMO_ROLLS: WeaponRoll[] = [
+  cantataGodRoll,
+  cantataJunk1,
+  cantataJunk2,
+  callusGodRoll,
+  callusJunk,
+  cataclysmic1,
+  cataclysmic2,
+  cataclysmic3,
+  funnelWeb1,
+  funnelWeb2,
+  forbearance1,
+  forbearance2,
+  refurbishedGood,
+  refurbishedBad,
+  aceOfSpades,
+  deliverance,
+  osteoStriga,
+  taipan,
+  witherhoard,
+  fatebringer,
+  eyasluna,
 ];
 
-// All weapon groups (duplicates + singles), sorted alphabetically
-const allWeaponGroups = [
-  aceGroup,
-  austringerGroup,
-  calusGroup,
-  cataclysmicGroup,
-  deliveranceGroup,
-  forbearanceGroup,
-  funnelwebGroup,
-  osteoGroup,
-  refurbishedGroup,
-  taipanGroup,
-  witherhoardGroup,
-];
-
+// Demo mode runs the real comparison engine so every scope, verdict, and DIM
+// tag shown matches what a live vault scan would produce.
 export const DEMO_ANALYSIS: VaultAnalysis = {
-  totalWeapons: 49,
-  duplicateGroups: allDuplicateGroups,
-  allWeaponGroups,
-  godRollCount: 5,
-  junkCount: 8,
-  keepCount: 6,
+  totalWeapons: DEMO_ROLLS.length,
+  ...compareWeapons(DEMO_ROLLS),
   armor: DEMO_ARMOR_ANALYSIS,
 };

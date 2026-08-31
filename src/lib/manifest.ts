@@ -5,6 +5,9 @@ import {
   ITEM_TYPE_ARMOR,
   ARMOR_SLOT_HASHES,
   ArmorSlot,
+  TIER_EXOTIC,
+  WeaponSlot,
+  WEAPON_SLOT_HASHES,
 } from "./types";
 
 // In-memory cache for manifest data
@@ -51,8 +54,23 @@ export function isLegendaryOrExotic(item: ManifestItemDefinition): boolean {
   return tier === 5 || tier === 6; // Legendary or Exotic
 }
 
+export function isExotic(item: ManifestItemDefinition): boolean {
+  return item.inventory?.tierType === TIER_EXOTIC;
+}
+
 export function isArmor(item: ManifestItemDefinition): boolean {
   return item.itemType === ITEM_TYPE_ARMOR;
+}
+
+/**
+ * Weapon slot from the item definition. Like armor, vault items report a
+ * generic bucket, so the definition's equipment slot is authoritative.
+ * Defaults to kinetic when the definition is missing the slot.
+ */
+export function getWeaponSlot(item: ManifestItemDefinition): WeaponSlot {
+  const slotHash = item.equippingBlock?.equipmentSlotTypeHash;
+  if (!slotHash) return "kinetic";
+  return WEAPON_SLOT_HASHES[slotHash] ?? "kinetic";
 }
 
 /**

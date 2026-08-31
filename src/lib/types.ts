@@ -131,6 +131,24 @@ export interface WeaponRoll {
   fallbackMaxScore?: number;
   /** True when this weapon had no wishlist entries and was scored via fallback */
   usedFallback?: boolean;
+  /** True for Exotic-tier weapons (never junked by cross-weapon comparison) */
+  isExotic: boolean;
+  /** Equipment slot the weapon occupies */
+  slot: WeaponSlot;
+  /** Intrinsic frame name, e.g. "Adaptive Frame" (perk column 0) */
+  frame?: string;
+
+  // --- Comparison results (filled in by weapon-comparison.ts) ---
+  /** Ranking score used to compare this roll against others */
+  score: number;
+  /** Overall verdict, considering duplicates *and* similar weapons you own */
+  verdict: WeaponVerdict;
+  /** Human-readable reasons behind the verdict */
+  reasons: string[];
+  /** DIM tag to apply to this instance */
+  suggestedTag: DimTag;
+  /** Set when a similar weapon you own beats this roll at the same role */
+  outclassedBy?: { itemInstanceId: string; name: string };
 }
 
 export interface PerkColumn {
@@ -150,24 +168,108 @@ export interface PerkInfo {
 
 export type ItemLocation = "vault" | "inventory" | "equipped" | "postmaster";
 
-export interface DuplicateGroup {
-  weaponHash: number;
-  weaponName: string;
-  weaponIcon: string;
+export type WeaponSlot = "kinetic" | "energy" | "power";
+
+export type WeaponVerdict = "keep" | "junk" | "review";
+
+/**
+ * DIM's item tag vocabulary. Every roll gets one so the analysis can be
+ * applied to a vault through DIM's bulk tagging.
+ */
+export type DimTag = "favorite" | "keep" | "infuse" | "junk" | "archive";
+
+export const DIM_TAGS: DimTag[] = [
+  "favorite",
+  "keep",
+  "infuse",
+  "junk",
+  "archive",
+];
+
+export const DIM_TAG_LABELS: Record<DimTag, string> = {
+  favorite: "Favorite",
+  keep: "Keep",
+  infuse: "Infuse",
+  junk: "Junk",
+  archive: "Archive",
+};
+
+export const DIM_TAG_HINTS: Record<DimTag, string> = {
+  favorite: "God rolls — the ones you actually chase",
+  keep: "Worth vault space",
+  infuse: "Junk, but higher power than anything you're keeping in the slot",
+  junk: "Safe to dismantle",
+  archive: "Outclassed by similar weapons — worth a manual look",
+};
+
+export const DIM_TAG_STYLES: Record<DimTag, string> = {
+  favorite: "bg-yellow-900/60 text-yellow-300 border-yellow-700/50",
+  keep: "bg-green-900/60 text-green-300 border-green-800/50",
+  infuse: "bg-sky-900/60 text-sky-300 border-sky-700/50",
+  junk: "bg-red-900/60 text-red-300 border-red-800/50",
+  archive: "bg-amber-900/50 text-amber-300 border-amber-800/50",
+};
+
+/**
+ * How weapons are grouped for comparison. "duplicates" and "all" group by
+ * weapon hash; the others compare *different* weapons that fill the same role.
+ */
+export type ComparisonScope = "duplicates" | "all" | "archetype" | "type";
+
+export const COMPARISON_SCOPE_LABELS: Record<ComparisonScope, string> = {
+  duplicates: "Duplicates",
+  all: "All Weapons",
+  archetype: "Same Archetype",
+  type: "Same Weapon Type",
+};
+
+export const COMPARISON_SCOPE_HINTS: Record<ComparisonScope, string> = {
+  duplicates: "Multiple copies of the same weapon",
+  all: "Every weapon, grouped by name",
+  archetype: "Weapons sharing type, frame, and element",
+  type: "Weapons sharing type and slot, any element",
+};
+
+export const WEAPON_SLOT_LABELS: Record<WeaponSlot, string> = {
+  kinetic: "Kinetic",
+  energy: "Energy",
+  power: "Power",
+};
+
+export interface WeaponGroup {
+  /** Stable identity for the group within its scope */
+  groupKey: string;
+  scope: ComparisonScope;
+  /** Weapon name for hash groups, role description for cross-weapon groups */
+  label: string;
+  /** Secondary line, e.g. "Adaptive Frame · Energy" */
+  sublabel: string;
+  icon: string;
+  /** Only set for groups keyed on a single weapon hash */
+  weaponHash?: number;
   weaponType: string;
   damageType: number;
+  slot: WeaponSlot;
   rolls: WeaponRoll[];
   keepRecommendations: string[]; // instanceIds to keep
   junkRecommendations: string[]; // instanceIds to junk
+  reviewRecommendations: string[]; // instanceIds worth a manual look
+  /** Best value in the group per stat hash, for comparison highlighting */
+  statLeaders: Record<number, number>;
 }
 
 export interface VaultAnalysis {
   totalWeapons: number;
-  duplicateGroups: DuplicateGroup[];
-  allWeaponGroups: DuplicateGroup[]; // All weapons including singles
+  duplicateGroups: WeaponGroup[]; // 2+ copies of the same weapon
+  allWeaponGroups: WeaponGroup[]; // All weapons including singles
+  archetypeGroups: WeaponGroup[]; // Same type + frame + element
+  typeGroups: WeaponGroup[]; // Same type + slot, any element
   godRollCount: number;
   junkCount: number;
   keepCount: number;
+  reviewCount: number;
+  /** Instance counts per suggested DIM tag */
+  tagCounts: Record<DimTag, number>;
   armor?: ArmorAnalysis;
 }
 
@@ -292,6 +394,14 @@ export const WEAPON_BUCKET_HASHES = {
   kinetic: 1498876634,
   energy: 2465295065,
   power: 953998645,
+};
+
+/** Equipment slot hash -> weapon slot. Vault items report a generic bucket,
+ *  so the definition's equippingBlock is the authoritative source. */
+export const WEAPON_SLOT_HASHES: Record<number, WeaponSlot> = {
+  1498876634: "kinetic",
+  2465295065: "energy",
+  953998645: "power",
 };
 
 // Item type enum values from Bungie API

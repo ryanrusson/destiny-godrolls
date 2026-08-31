@@ -1,6 +1,6 @@
 # Vault Janitor - Destiny 2 God Roll Checker
 
-A web app that connects to your Bungie account, scans your Destiny 2 vault, and tells you which duplicate weapons and armor pieces to keep and which to dismantle. Weapons are checked against the community-curated [Voltron wishlist](https://github.com/48klocs/dim-wish-list-sources) with a built-in perk scoring fallback; armor is assessed under the Edge of Fate Armor 3.0 tiering system (gear tiers, archetypes, stat rolls).
+A web app that connects to your Bungie account, scans your Destiny 2 vault, and tells you which weapons and armor pieces to keep and which to dismantle. Weapons are compared against duplicate copies *and* against every other weapon in your vault that fills the same role, then checked against the community-curated [Voltron wishlist](https://github.com/48klocs/dim-wish-list-sources) with a built-in perk scoring fallback. Armor is assessed under the Edge of Fate Armor 3.0 tiering system (gear tiers, archetypes, stat rolls). Every weapon gets a suggested [DIM](https://destinyitemmanager.com) tag, exportable as a DIM search query for bulk tagging.
 
 Built with Next.js 16, React 19, TypeScript, and Tailwind CSS.
 
@@ -62,7 +62,7 @@ When you click "Scan Vault", the app:
 3. **Downloads the Voltron wishlist** (cached for 6 hours) - a community-curated list of recommended weapon rolls
 4. **Filters to Legendary and Exotic weapons** only
 5. **Evaluates each weapon** against the wishlist and fallback scoring (see below)
-6. **Groups duplicates** by weapon hash and recommends which to keep vs. dismantle
+6. **Compares every weapon** against its duplicates and against similar weapons you own, then recommends which to keep, review, or dismantle
 
 ### Weapon Scoring: Two Systems
 
@@ -109,13 +109,59 @@ How pieces are judged:
 - **Legacy armor** (pre-Edge of Fate, no archetype) is flagged junk-leaning since it can't compete with tiered gear.
 - **Exotics get separate rules** and are never bulk-junked: the best roll of each distinct exotic is kept, and exotic class items keep the best copy of every unique perk combo (e.g. Spirit of the Assassin + Spirit of the Star-Eater).
 
-### Keep/Junk Recommendations
+### Weapon Comparisons
 
-For each group of duplicate weapons:
+Owning three copies of one hand cannon is the obvious cleanup case, but it isn't
+the only one. If you own six different kinetic hand cannons and only two are any
+good, the other four are just as much vault clutter. The Weapons tab compares
+your rolls along four scopes, switchable with the **Compare by** control:
+
+| Scope | Groups by | Answers |
+|-------|-----------|---------|
+| **Duplicates** | Same weapon hash, 2+ copies | Which copy of this weapon do I keep? |
+| **All Weapons** | Same weapon hash, singles included | What does this weapon look like? |
+| **Same Archetype** | Weapon type + intrinsic frame + element | Which of my solar lightweight SMGs is best? |
+| **Same Weapon Type** | Weapon type + equipment slot, any element | How many energy hand cannons am I really carrying? |
+
+Any group with 2+ rolls gets a **Compare stats** toggle: a side-by-side table of
+every stat the rolls disagree on, with the best value in each row highlighted.
+
+### Keep / Review / Junk Recommendations
+
+Each roll carries one verdict, computed once from every comparison, so the same
+weapon reads the same way in every scope.
+
+**Duplicate pass** (same weapon hash):
 
 1. **Always keep** god rolls, recommended rolls, and equipped weapons
 2. **Always keep at least one copy** - if nothing is recommended, keep the best roll (highest wishlist match count, then fallback score, then power level)
 3. **Everything else is junk** - safe to dismantle
+
+**Role pass** (same archetype):
+
+Different weapons filling the same role compete with each other. A roll that two
+or more similar weapons clearly beat drops to **review** rather than junk -
+losing a role comparison is a much softer signal than being a redundant copy, so
+nothing is ever auto-junked on that basis. Exotics sit the comparison out
+entirely; they occupy a slot no legendary competes for.
+
+### DIM Tagging
+
+Every roll gets a suggested [DIM](https://destinyitemmanager.com) tag, because a
+tag belongs to an item rather than to a grouping:
+
+| Tag | Meaning |
+|-----|---------|
+| **Favorite** | God rolls - the ones you actually chase |
+| **Keep** | Worth vault space |
+| **Infuse** | Junk, but higher power than anything you're keeping in that slot - use it as fuel |
+| **Junk** | Safe to dismantle |
+| **Archive** | Outclassed by similar weapons - worth a manual look |
+
+The **DIM Tagging** panel above the results turns each tag into a DIM search
+query (`id:… or id:…`) covering exactly the weapons currently in view. Copy it,
+paste it into DIM's search bar, and bulk-tag the whole set from the item actions
+menu. The panel respects your active filters, so you can tag a slice at a time.
 
 ### What the Weapon Card Shows
 
@@ -125,9 +171,13 @@ Each weapon card displays:
 - Stat bars (Range, Stability, Handling, Reload Speed, etc.)
 - All available perks per column in a grid (DIM-style), with the equipped perk highlighted
 - Wishlist perks marked with a gold dot
-- A badge: GOD ROLL / KEEP / GREAT ROLL / GOOD ROLL / JUNK / KEEP (BEST)
+- The suggested DIM tag (FAVORITE / KEEP / INFUSE / JUNK / ARCHIVE) and roll quality (GOD ROLL / GREAT ROLL / GOOD ROLL / WISHLIST MATCH)
+- The reasons behind the verdict ("Duplicate - a better copy is kept", "Outclassed by 2 other kinetic hand cannons you own")
 - Wishlist notes from the community (when available)
 - Perk score (for fallback-rated weapons)
+
+Inside a comparison group, the best value for each stat is highlighted so you
+can see at a glance which roll wins where.
 
 ## Project Structure
 
@@ -145,13 +195,16 @@ src/
         profile/route.ts  # Returns player info
         inventory/route.ts# Fetches + analyzes vault
   components/
-    WeaponCard.tsx        # Individual weapon roll card
+    WeaponCard.tsx           # Individual weapon roll card
+    ComparisonGroupCard.tsx  # A comparison group + its stat table
+    DimTagPanel.tsx          # DIM tag summary and search-query export
   lib/
     bungie-api.ts         # Bungie API client
     bungie-auth.ts        # OAuth + session management
     manifest.ts           # Item definition loader
     wishlist.ts           # Voltron wishlist parser
     analyzer.ts           # Core analysis engine
+    weapon-comparison.ts  # Comparison scopes, verdicts, and DIM tags
     perk-ratings.ts       # Fallback perk tier database
     demo-data.ts          # Demo mode sample data
     types.ts              # TypeScript interfaces
