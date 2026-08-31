@@ -5,11 +5,18 @@ import { ensureDimToken, getDimTags, isDimConfigured } from "@/lib/dim-api";
 /**
  * The user's existing DIM tags/notes, keyed by item instance id, so the sync
  * dialog can show what a push would change and protect hand-set tags.
+ *
+ * `?check=1` short-circuits to just the configured flag — a cheap probe the UI
+ * uses to warn upfront when this deployment has no DIM API key.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     if (!isDimConfigured()) {
       return NextResponse.json({ configured: false, tags: {} });
+    }
+
+    if (new URL(request.url).searchParams.get("check")) {
+      return NextResponse.json({ configured: true, tags: {} });
     }
 
     const session = await getSession();

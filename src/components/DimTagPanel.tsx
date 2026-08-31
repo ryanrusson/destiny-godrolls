@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DimTag,
   DIM_TAGS,
@@ -106,6 +106,25 @@ export default function DimTagPanel({
   const [copyFailed, setCopyFailed] = useState(false);
   const [sync, setSync] = useState<SyncState>({ step: "idle" });
   const [overwrite, setOverwrite] = useState(false);
+  /** null = not probed yet; cheap ?check=1 call on first expand */
+  const [dimConfigured, setDimConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!expanded || isDemo || dimConfigured !== null) return;
+    let cancelled = false;
+    fetch("/api/dim/preview?check=1")
+      .then((res) => res.json())
+      .then((data: { configured?: boolean }) => {
+        if (!cancelled) setDimConfigured(Boolean(data.configured));
+      })
+      .catch(() => {
+        // Leave it unknown; the sync flow still reports errors on its own
+        if (!cancelled) setDimConfigured(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, isDemo, dimConfigured]);
 
   // The user's manual tag choices (made on the item cards) win everywhere:
   // the counts, the copy queries, and the sync all use the effective tags.
@@ -142,6 +161,7 @@ export default function DimTagPanel({
       }
       const data = (await res.json()) as { configured: boolean; tags: ExistingTags };
       if (!data.configured) {
+        setDimConfigured(false);
         setSync({ step: "unconfigured" });
         return;
       }
@@ -236,8 +256,21 @@ export default function DimTagPanel({
             bulk-tag the results from the item actions menu.
           </p>
 
+          {/* Upfront notice when this deployment has no DIM API key */}
+          {!isDemo && dimConfigured === false && (
+            <div className="bg-amber-950/30 border border-amber-800/40 rounded-lg px-3 py-2">
+              <p className="text-xs font-medium text-amber-300">
+                Direct DIM sync isn&apos;t available on this site yet
+              </p>
+              <p className="text-[11px] text-amber-500/90 mt-0.5">
+                This deployment doesn&apos;t have a DIM API key configured. You
+                can still tag everything in DIM with the copy queries below.
+              </p>
+            </div>
+          )}
+
           {/* Direct DIM Sync */}
-          {!isDemo && (
+          {!isDemo && dimConfigured !== false && (
             <div className="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 space-y-2">
               {(sync.step === "idle" ||
                 sync.step === "loading" ||
