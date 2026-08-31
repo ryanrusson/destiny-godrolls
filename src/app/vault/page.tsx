@@ -5,10 +5,12 @@ import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import StatsBar from "@/components/StatsBar";
 import DuplicateGroup from "@/components/DuplicateGroup";
+import ArmorView from "@/components/ArmorView";
 import { VaultAnalysis, DAMAGE_TYPES } from "@/lib/types";
 import { DEMO_ANALYSIS } from "@/lib/demo-data";
 
 type FilterMode = "all" | "junk" | "godrolls" | "nowishlist";
+type ViewMode = "weapons" | "armor";
 
 function VaultContent() {
   const searchParams = useSearchParams();
@@ -17,6 +19,7 @@ function VaultContent() {
   const [analysis, setAnalysis] = useState<VaultAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>("weapons");
   const [filter, setFilter] = useState<FilterMode>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [weaponTypeFilter, setWeaponTypeFilter] = useState<string>("all");
@@ -167,11 +170,30 @@ function VaultContent() {
         {/* Results */}
         {analysis && !loading && !error && (
           <>
-            {/* Stats */}
-            <div className="mb-8">
-              <StatsBar analysis={analysis} />
+            {/* Weapons | Armor view switcher */}
+            <div className="mb-6 flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1 w-fit">
+              {(["weapons", "armor"] as ViewMode[]).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors capitalize ${
+                    view === v
+                      ? "bg-gray-700 text-white"
+                      : "text-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
             </div>
 
+            {/* Stats */}
+            <div className="mb-8">
+              <StatsBar analysis={analysis} mode={view} />
+            </div>
+
+            {view === "weapons" ? (
+              <>
             {/* Search & Filter Bar */}
             <div className="mb-6 space-y-3">
               {/* Search + Dropdowns row */}
@@ -396,6 +418,16 @@ function VaultContent() {
                   These are duplicate copies that don&apos;t match any community god
                   roll recommendations. The best copy of each weapon has been
                   marked to keep.
+                </p>
+              </div>
+            )}
+              </>
+            ) : analysis.armor ? (
+              <ArmorView armor={analysis.armor} />
+            ) : (
+              <div className="text-center py-16">
+                <p className="text-gray-500">
+                  No armor data available yet. Refresh your vault to analyze armor.
                 </p>
               </div>
             )}

@@ -1,5 +1,11 @@
 import { getManifestUrls, getManifestTable } from "./bungie-api";
-import { ManifestItemDefinition, ITEM_TYPE_WEAPON } from "./types";
+import {
+  ManifestItemDefinition,
+  ITEM_TYPE_WEAPON,
+  ITEM_TYPE_ARMOR,
+  ARMOR_SLOT_HASHES,
+  ArmorSlot,
+} from "./types";
 
 // In-memory cache for manifest data
 let cachedItemDefs: Map<number, ManifestItemDefinition> | null = null;
@@ -43,6 +49,20 @@ export function isWeapon(item: ManifestItemDefinition): boolean {
 export function isLegendaryOrExotic(item: ManifestItemDefinition): boolean {
   const tier = item.inventory?.tierType;
   return tier === 5 || tier === 6; // Legendary or Exotic
+}
+
+export function isArmor(item: ManifestItemDefinition): boolean {
+  return item.itemType === ITEM_TYPE_ARMOR;
+}
+
+/**
+ * Armor slot from the item definition. Live items in the vault report the
+ * general armor bucket, so the definition's equipment slot is authoritative.
+ */
+export function getArmorSlot(item: ManifestItemDefinition): ArmorSlot | null {
+  const slotHash = item.equippingBlock?.equipmentSlotTypeHash;
+  if (!slotHash) return null;
+  return ARMOR_SLOT_HASHES[slotHash] ?? null;
 }
 
 export function getWeaponPerks(
