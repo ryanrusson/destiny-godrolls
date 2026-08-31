@@ -51,6 +51,8 @@ export interface DestinyItemInstance {
   };
   damageType?: number;
   isEquipped: boolean;
+  /** Armor 3.0 gear tier (1-5); null/absent on pre-Edge of Fate gear */
+  gearTier?: number | null;
 }
 
 export interface DestinyItemSocket {
@@ -166,6 +168,80 @@ export interface VaultAnalysis {
   godRollCount: number;
   junkCount: number;
   keepCount: number;
+  armor?: ArmorAnalysis;
+}
+
+// --- Armor Analysis Types ---
+
+export type ArmorSlot = "helmet" | "gauntlets" | "chest" | "legs" | "classItem";
+
+export type ArmorVerdict = "keep" | "junk" | "review";
+
+export type ArmorArchetype =
+  | "Paragon"
+  | "Grenadier"
+  | "Specialist"
+  | "Brawler"
+  | "Bulwark"
+  | "Gunner"
+  | "Unknown";
+
+export interface ArmorPiece {
+  itemInstanceId: string;
+  itemHash: number;
+  name: string;
+  icon: string;
+  watermark?: string;
+  tierName: string; // "Legendary" | "Exotic"
+  isExotic: boolean;
+  classType: number; // 0=Titan, 1=Hunter, 2=Warlock, 3=any (some class-agnostic exotics)
+  slot: ArmorSlot;
+  powerLevel: number;
+  /** All 6 armor stats in ARMOR_STAT_ORDER order (value 0 when missing) */
+  stats: WeaponStat[];
+  statTotal: number;
+  /** Armor 3.0 gear tier 1-5; null for legacy/unknown */
+  gearTier: number | null;
+  gearTierSource: "api" | "derived" | null;
+  archetype: ArmorArchetype;
+  /** Highest stat outside the archetype's primary/secondary pair */
+  tertiaryStat?: WeaponStat;
+  /** Pre-Edge of Fate armor without an Armor 3.0 archetype */
+  isLegacy: boolean;
+  /** Exotic class items: the rolled exotic perk pair */
+  exoticPerks?: PerkInfo[];
+  verdict: ArmorVerdict;
+  /** Human-readable reason tags explaining the verdict */
+  reasons: string[];
+  /** Internal ranking score (higher = better) */
+  score: number;
+  location: ItemLocation;
+  characterId?: string;
+}
+
+export interface ArmorGroup {
+  groupKey: string; // "classType|slot|archetype", "classType|slot|legacy", or "exotic|itemHash"
+  label: string;
+  icon: string;
+  classType: number;
+  slot: ArmorSlot;
+  archetype: ArmorArchetype;
+  isExoticGroup: boolean;
+  pieces: ArmorPiece[]; // sorted keep > review > junk, then score desc
+  keepRecommendations: string[]; // instanceIds
+  junkRecommendations: string[]; // instanceIds
+}
+
+export interface ArmorAnalysis {
+  totalArmor: number;
+  duplicateGroups: ArmorGroup[]; // groups with >= 2 pieces
+  allArmorGroups: ArmorGroup[];
+  keepCount: number;
+  junkCount: number;
+  reviewCount: number;
+  tier5Count: number;
+  exoticCount: number;
+  legacyCount: number;
 }
 
 // --- Wishlist Types ---
@@ -243,6 +319,65 @@ export const ITEM_SUB_TYPES = {
 // Tier type values
 export const TIER_LEGENDARY = 5;
 export const TIER_EXOTIC = 6;
+
+// --- Armor Constants ---
+
+export const ITEM_TYPE_ARMOR = 2;
+
+// Equipment slot hashes (from equippingBlock.equipmentSlotTypeHash) -> armor slot
+export const ARMOR_SLOT_HASHES: Record<number, ArmorSlot> = {
+  3448274439: "helmet",
+  3551918588: "gauntlets",
+  14239492: "chest",
+  20886954: "legs",
+  1585787867: "classItem",
+};
+
+export const ARMOR_SLOT_LABELS: Record<ArmorSlot, string> = {
+  helmet: "Helmet",
+  gauntlets: "Arms",
+  chest: "Chest",
+  legs: "Legs",
+  classItem: "Class Item",
+};
+
+export const CLASS_NAMES: Record<number, string> = {
+  0: "Titan",
+  1: "Hunter",
+  2: "Warlock",
+};
+
+// Armor 3.0 stats (same hashes as the pre-Edge of Fate stats, renamed)
+export const ARMOR_STAT_ORDER: { hash: number; name: string }[] = [
+  { hash: 392767087, name: "Health" }, // was Resilience
+  { hash: 4244567218, name: "Melee" }, // was Strength
+  { hash: 1735777505, name: "Grenade" }, // was Discipline
+  { hash: 144602215, name: "Super" }, // was Intellect
+  { hash: 1943323491, name: "Class" }, // was Recovery
+  { hash: 2996146975, name: "Weapons" }, // was Mobility
+];
+
+// Archetype -> [primary stat hash, secondary stat hash]
+export const ARCHETYPE_STATS: Record<
+  Exclude<ArmorArchetype, "Unknown">,
+  [number, number]
+> = {
+  Paragon: [144602215, 4244567218], // Super / Melee
+  Grenadier: [1735777505, 144602215], // Grenade / Super
+  Specialist: [1943323491, 2996146975], // Class / Weapons
+  Brawler: [4244567218, 392767087], // Melee / Health
+  Bulwark: [392767087, 1943323491], // Health / Class
+  Gunner: [2996146975, 1735777505], // Weapons / Grenade
+};
+
+// Gear tier stat-total bands (T5 also guarantees a 30/25/20 spread + tuning slot)
+export const GEAR_TIER_STAT_RANGES: Record<number, [number, number]> = {
+  1: [52, 57],
+  2: [58, 63],
+  3: [64, 69],
+  4: [70, 74],
+  5: [75, 75],
+};
 
 // Weapon stat hashes (display order)
 export const WEAPON_STAT_ORDER: { hash: number; name: string }[] = [

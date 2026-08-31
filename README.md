@@ -1,6 +1,6 @@
 # Vault Janitor - Destiny 2 God Roll Checker
 
-A web app that connects to your Bungie account, scans your Destiny 2 vault, and tells you which duplicate weapons to keep and which to dismantle. Uses the community-curated [Voltron wishlist](https://github.com/48klocs/dim-wish-list-sources) and a built-in perk scoring fallback for weapons the wishlist doesn't cover.
+A web app that connects to your Bungie account, scans your Destiny 2 vault, and tells you which duplicate weapons and armor pieces to keep and which to dismantle. Weapons are checked against the community-curated [Voltron wishlist](https://github.com/48klocs/dim-wish-list-sources) with a built-in perk scoring fallback; armor is assessed under the Edge of Fate Armor 3.0 tiering system (gear tiers, archetypes, stat rolls).
 
 Built with Next.js 16, React 19, TypeScript, and Tailwind CSS.
 
@@ -96,6 +96,18 @@ The two trait perks are scored and summed (max 6 with two S-tier perks):
 | None | 0 | Junk candidate |
 
 Only trait perks (columns 3 & 4) are scored. Barrel and magazine perks are too weapon-specific to rate generically.
+
+### Armor Assessments (Armor 3.0)
+
+The Armor tab assesses every Legendary and Exotic armor piece under the Edge of Fate armor system. Each piece gets a verdict — **KEEP**, **JUNK**, or **REVIEW** — with reason tags explaining why, plus filters to slice by class, slot, archetype, gear tier, and status.
+
+How pieces are judged:
+
+- **Gear tier (1-5)** comes from the Bungie API when available, or is derived from the stat total (T1 52-57 ... T5 = 75). Tier 5 pieces (max stats + tuning slot) are always keeps.
+- **Archetype** (Brawler, Bulwark, Grenadier, Gunner, Paragon, Specialist) is read from the armor's intrinsic and determines the primary/secondary stats; the random tertiary stat is highlighted and factors into Tier 4 verdicts.
+- **Duplicate comparison** groups pieces by class + slot + archetype; a piece that is strictly worse than another you own (same or lower tier, every stat equal or lower) is junk. Every group always keeps at least one piece.
+- **Legacy armor** (pre-Edge of Fate, no archetype) is flagged junk-leaning since it can't compete with tiered gear.
+- **Exotics get separate rules** and are never bulk-junked: the best roll of each distinct exotic is kept, and exotic class items keep the best copy of every unique perk combo (e.g. Spirit of the Assassin + Spirit of the Star-Eater).
 
 ### Keep/Junk Recommendations
 

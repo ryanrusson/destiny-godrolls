@@ -1,4 +1,5 @@
 import { VaultAnalysis, DuplicateGroup, WeaponRoll } from "./types";
+import { DEMO_ARMOR_ANALYSIS } from "./demo-armor-data";
 
 // Demo data to showcase the app without needing a Bungie API key
 // These represent realistic weapon rolls from Destiny 2
@@ -942,4 +943,5 @@ export const DEMO_ANALYSIS: VaultAnalysis = {
   godRollCount: 5,
   junkCount: 8,
   keepCount: 6,
+  armor: DEMO_ARMOR_ANALYSIS,
 };

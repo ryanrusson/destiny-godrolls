@@ -2,6 +2,7 @@ import { ProfileResponse, bungieIconUrl } from "./bungie-api";
 import { getItemDefinitions, isWeapon, isLegendaryOrExotic } from "./manifest";
 import { fetchWishlist, checkWishlistMatch } from "./wishlist";
 import { scoreFallbackRoll } from "./perk-ratings";
+import { analyzeArmor } from "./armor-analyzer";
 import {
   WeaponRoll,
   WeaponStat,
@@ -14,7 +15,7 @@ import {
   WEAPON_STAT_ORDER,
 } from "./types";
 
-function getItemLocation(
+export function getItemLocation(
   item: { location: number; bucketHash: number },
   characterId?: string
 ): ItemLocation {
@@ -23,6 +24,49 @@ function getItemLocation(
   if (item.location === 3) return "postmaster";
   if (characterId) return "inventory";
   return "vault";
+}
+
+export interface CollectedItem {
+  item: {
+    itemHash: number;
+    itemInstanceId?: string;
+    bucketHash: number;
+    location: number;
+  };
+  characterId?: string;
+  isEquipped: boolean;
+}
+
+/** Gather every item instance from the vault, character inventories, and equipment. */
+export function collectItems(profileData: ProfileResponse): CollectedItem[] {
+  const allItems: CollectedItem[] = [];
+
+  // Vault items
+  if (profileData.profileInventory?.data?.items) {
+    for (const item of profileData.profileInventory.data.items) {
+      allItems.push({ item, isEquipped: false });
+    }
+  }
+
+  // Character inventories
+  if (profileData.characterInventories?.data) {
+    for (const [charId, inv] of Object.entries(profileData.characterInventories.data)) {
+      for (const item of inv.items) {
+        allItems.push({ item, characterId: charId, isEquipped: false });
+      }
+    }
+  }
+
+  // Character equipment
+  if (profileData.characterEquipment?.data) {
+    for (const [charId, equip] of Object.entries(profileData.characterEquipment.data)) {
+      for (const item of equip.items) {
+        allItems.push({ item, characterId: charId, isEquipped: true });
+      }
+    }
+  }
+
+  return allItems;
 }
 
 function buildPerkColumns(
@@ -108,37 +152,8 @@ export async function analyzeProfile(
     fetchWishlist(),
   ]);
 
-  // Collect all weapon items from vault and characters
-  const allItems: {
-    item: { itemHash: number; itemInstanceId?: string; bucketHash: number; location: number };
-    characterId?: string;
-    isEquipped: boolean;
-  }[] = [];
-
-  // Vault items
-  if (profileData.profileInventory?.data?.items) {
-    for (const item of profileData.profileInventory.data.items) {
-      allItems.push({ item, isEquipped: false });
-    }
-  }
-
-  // Character inventories
-  if (profileData.characterInventories?.data) {
-    for (const [charId, inv] of Object.entries(profileData.characterInventories.data)) {
-      for (const item of inv.items) {
-        allItems.push({ item, characterId: charId, isEquipped: false });
-      }
-    }
-  }
-
-  // Character equipment
-  if (profileData.characterEquipment?.data) {
-    for (const [charId, equip] of Object.entries(profileData.characterEquipment.data)) {
-      for (const item of equip.items) {
-        allItems.push({ item, characterId: charId, isEquipped: true });
-      }
-    }
-  }
+  // Collect all items from vault and characters
+  const allItems = collectItems(profileData);
 
   // Filter to weapons only and build weapon rolls
   const weaponRolls: WeaponRoll[] = [];
@@ -322,6 +337,8 @@ export async function analyzeProfile(
   // Sort all weapons alphabetically by name
   allWeaponGroups.sort((a, b) => a.weaponName.localeCompare(b.weaponName));
 
+  const armor = analyzeArmor(profileData, itemDefs);
+
   return {
     totalWeapons: weaponRolls.length,
     duplicateGroups,
@@ -335,5 +352,6 @@ export async function analyzeProfile(
       (sum, g) => sum + g.keepRecommendations.length,
       0
     ),
+    armor,
   };
 }
