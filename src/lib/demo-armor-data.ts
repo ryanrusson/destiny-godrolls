@@ -1,4 +1,11 @@
-import { ArmorAnalysis, ArmorGroup, ArmorPiece, ARMOR_STAT_ORDER } from "./types";
+import {
+  ArmorAnalysis,
+  ArmorGroup,
+  ArmorPiece,
+  ARMOR_STAT_ORDER,
+  DimTag,
+  DIM_TAGS,
+} from "./types";
 
 // Demo armor data showcasing the Armor 3.0 assessment without a Bungie sign-in
 
@@ -43,6 +50,7 @@ function makeArmorPiece(
     isLegacy: false,
     verdict: "review",
     reasons: [],
+    suggestedTag: "archive",
     score: 0,
     location: "vault",
     ...overrides,
@@ -52,6 +60,17 @@ function makeArmorPiece(
     (piece.gearTier ?? 0) * 1000 +
     piece.statTotal * 10 +
     (piece.tertiaryStat?.value ?? 0);
+  // Same verdict -> DIM tag mapping as armor-analyzer.ts
+  if (!overrides.suggestedTag) {
+    piece.suggestedTag =
+      piece.verdict === "keep"
+        ? piece.gearTier === 5 || piece.isExotic
+          ? "favorite"
+          : "keep"
+        : piece.verdict === "junk"
+          ? "junk"
+          : "archive";
+  }
   return piece;
 }
 
@@ -344,4 +363,11 @@ export const DEMO_ARMOR_ANALYSIS: ArmorAnalysis = {
   tier5Count: allPieces.filter((p) => p.gearTier === 5).length,
   exoticCount: allPieces.filter((p) => p.isExotic).length,
   legacyCount: allPieces.filter((p) => p.isLegacy).length,
+  tagCounts: allPieces.reduce(
+    (counts, p) => {
+      counts[p.suggestedTag] += 1;
+      return counts;
+    },
+    Object.fromEntries(DIM_TAGS.map((t) => [t, 0])) as Record<DimTag, number>
+  ),
 };

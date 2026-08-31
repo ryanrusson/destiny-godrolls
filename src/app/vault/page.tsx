@@ -455,8 +455,9 @@ function VaultContent() {
 
             {/* DIM tagging export for whatever is currently in view */}
             <DimTagPanel
-              rolls={visibleRolls}
+              items={visibleRolls}
               scopeLabel={`compared by ${COMPARISON_SCOPE_LABELS[scope].toLowerCase()}`}
+              isDemo={isDemo}
             />
 
             {/* Comparison Groups */}
@@ -511,7 +512,7 @@ function VaultContent() {
             )}
               </>
             ) : analysis.armor ? (
-              <ArmorView armor={analysis.armor} />
+              <ArmorView armor={analysis.armor} isDemo={isDemo} />
             ) : (
               <div className="text-center py-16">
                 <p className="text-gray-500">

@@ -10,6 +10,8 @@ import {
   ARMOR_SLOT_LABELS,
   ARMOR_STAT_ORDER,
   CLASS_NAMES,
+  DimTag,
+  DIM_TAGS,
   ItemLocation,
   ManifestItemDefinition,
   PerkInfo,
@@ -385,6 +387,7 @@ export function analyzeArmor(
       exoticPerks: exoticPerks && exoticPerks.length > 0 ? exoticPerks : undefined,
       verdict: "review",
       reasons: [],
+      suggestedTag: "archive",
       score: 0,
       location,
       characterId,
@@ -458,6 +461,25 @@ export function analyzeArmor(
   );
   allArmorGroups.sort((a, b) => a.label.localeCompare(b.label));
 
+  // Map verdicts onto DIM's tag vocabulary, mirroring the weapon pass:
+  // review -> "archive" (worth a manual look). Kept Tier 5s and exotics are
+  // the armor equivalent of god rolls, so they get "favorite".
+  const tagCounts = Object.fromEntries(DIM_TAGS.map((t) => [t, 0])) as Record<
+    DimTag,
+    number
+  >;
+  for (const piece of pieces) {
+    if (piece.verdict === "keep") {
+      piece.suggestedTag =
+        piece.gearTier === 5 || piece.isExotic ? "favorite" : "keep";
+    } else if (piece.verdict === "junk") {
+      piece.suggestedTag = "junk";
+    } else {
+      piece.suggestedTag = "archive";
+    }
+    tagCounts[piece.suggestedTag] += 1;
+  }
+
   return {
     totalArmor: pieces.length,
     duplicateGroups,
@@ -468,5 +490,6 @@ export function analyzeArmor(
     tier5Count: pieces.filter((p) => p.gearTier === 5).length,
     exoticCount: pieces.filter((p) => p.isExotic).length,
     legacyCount: pieces.filter((p) => p.isLegacy).length,
+    tagCounts,
   };
 }

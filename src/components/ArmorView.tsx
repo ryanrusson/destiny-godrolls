@@ -9,6 +9,7 @@ import {
   CLASS_NAMES,
 } from "@/lib/types";
 import ArmorGroupCard from "./ArmorGroupCard";
+import DimTagPanel from "./DimTagPanel";
 
 type ArmorFilterMode = "all" | "junk" | "review" | "tier5" | "legacy" | "exotics";
 
@@ -26,9 +27,10 @@ const SLOT_OPTIONS: ArmorSlot[] = ["helmet", "gauntlets", "chest", "legs", "clas
 
 interface ArmorViewProps {
   armor: ArmorAnalysis;
+  isDemo?: boolean;
 }
 
-export default function ArmorView({ armor }: ArmorViewProps) {
+export default function ArmorView({ armor, isDemo = false }: ArmorViewProps) {
   const [filter, setFilter] = useState<ArmorFilterMode>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [classFilter, setClassFilter] = useState<string>("all");
@@ -83,6 +85,16 @@ export default function ArmorView({ armor }: ArmorViewProps) {
     slotFilter !== "all" ||
     archetypeFilter !== "all" ||
     tierFilter !== "all";
+
+  // Deduplicate pieces for the DIM export: a group can appear in both the
+  // duplicates and all-armor lists, but a piece only belongs to one group.
+  const visiblePieces = [
+    ...new Map(
+      filteredGroups
+        .flatMap((g) => g.pieces)
+        .map((piece) => [piece.itemInstanceId, piece])
+    ).values(),
+  ];
 
   const filterTabs: { mode: ArmorFilterMode; label: string; count: number; active: string }[] = [
     {
@@ -264,6 +276,14 @@ export default function ArmorView({ armor }: ArmorViewProps) {
           )}
         </div>
       </div>
+
+      {/* DIM tagging export for whatever is currently in view */}
+      <DimTagPanel
+        items={visiblePieces}
+        scopeLabel={showAllArmor ? "all armor" : "duplicate groups"}
+        itemNoun="armor piece"
+        isDemo={isDemo}
+      />
 
       {/* Armor Groups */}
       {filteredGroups.length > 0 ? (
