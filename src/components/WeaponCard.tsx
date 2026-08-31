@@ -1,13 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { WeaponRoll, PerkInfo, DAMAGE_TYPES } from "@/lib/types";
+import {
+  WeaponRoll,
+  PerkInfo,
+  DAMAGE_TYPES,
+  DIM_TAG_HINTS,
+  DIM_TAG_LABELS,
+  DIM_TAG_STYLES,
+} from "@/lib/types";
 import { bungieIconUrl } from "@/lib/bungie-api";
 
 interface WeaponCardProps {
   roll: WeaponRoll;
-  recommendation: "keep" | "junk";
+  /** Best value per stat hash in the surrounding comparison group */
+  statLeaders?: Record<number, number>;
 }
+
+const verdictCardClass: Record<WeaponRoll["verdict"], string> = {
+  keep: "border-green-900/50 bg-green-950/20 hover:border-green-800/50",
+  review: "border-amber-900/50 bg-amber-950/20 hover:border-amber-800/50",
+  junk: "border-red-900/50 bg-red-950/20 hover:border-red-800/50",
+};
 
 const locationLabels: Record<string, string> = {
   vault: "Vault",
@@ -100,19 +114,11 @@ function PerkIcon({ perk, isSelected, size = "sm" }: { perk: PerkInfo; isSelecte
   );
 }
 
-export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
+export default function WeaponCard({ roll, statLeaders }: WeaponCardProps) {
   const damageInfo = DAMAGE_TYPES[roll.damageType] || DAMAGE_TYPES[0];
 
   return (
-    <div
-      className={`rounded-lg border p-4 transition-all ${
-        recommendation === "junk"
-          ? "border-red-900/50 bg-red-950/20 hover:border-red-800/50"
-          : roll.isGodRoll
-            ? "border-yellow-700/50 bg-yellow-950/20 hover:border-yellow-600/50"
-            : "border-green-900/50 bg-green-950/20 hover:border-green-800/50"
-      }`}
-    >
+    <div className={`rounded-lg border p-4 transition-all ${verdictCardClass[roll.verdict]}`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
@@ -144,22 +150,28 @@ export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
         </div>
 
         <div className="flex flex-col items-end gap-1">
-          {/* Recommendation badge */}
-          {recommendation === "junk" ? (
-            <span className="text-xs font-bold px-2 py-0.5 rounded bg-red-900/60 text-red-300 border border-red-800/50">
-              JUNK
-            </span>
-          ) : roll.isGodRoll ? (
-            <span className="text-xs font-bold px-2 py-0.5 rounded bg-yellow-900/60 text-yellow-300 border border-yellow-700/50">
-              {roll.usedFallback ? "GREAT ROLL" : "GOD ROLL"}
-            </span>
-          ) : roll.isRecommended ? (
-            <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-900/60 text-green-300 border border-green-800/50">
-              {roll.usedFallback ? "GOOD ROLL" : "KEEP"}
-            </span>
-          ) : (
-            <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-900/40 text-green-400 border border-green-800/40">
-              KEEP (BEST)
+          {/* Suggested DIM tag — the actionable verdict */}
+          <span
+            className={`text-xs font-bold px-2 py-0.5 rounded border uppercase ${DIM_TAG_STYLES[roll.suggestedTag]}`}
+            title={`DIM tag: ${DIM_TAG_LABELS[roll.suggestedTag]} — ${DIM_TAG_HINTS[roll.suggestedTag]}`}
+          >
+            {DIM_TAG_LABELS[roll.suggestedTag]}
+          </span>
+          {(roll.isGodRoll || roll.isRecommended) && (
+            <span
+              className={`text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border ${
+                roll.isGodRoll
+                  ? "bg-yellow-900/40 text-yellow-300/90 border-yellow-700/40"
+                  : "bg-green-900/40 text-green-300/90 border-green-800/40"
+              }`}
+            >
+              {roll.isGodRoll
+                ? roll.usedFallback
+                  ? "Great roll"
+                  : "God roll"
+                : roll.usedFallback
+                  ? "Good roll"
+                  : "Wishlist match"}
             </span>
           )}
           {roll.usedFallback && (
@@ -192,22 +204,33 @@ export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
       {/* Weapon Stats */}
       {roll.stats.length > 0 && (
         <div className="mb-3 space-y-1">
-          {roll.stats.map((stat) => (
-            <div key={stat.statHash} className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-400 w-24 text-right shrink-0">
-                {stat.name}
-              </span>
-              <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${statBarColor(stat.value)}`}
-                  style={{ width: `${Math.min(stat.value, 100)}%` }}
-                />
+          {roll.stats.map((stat) => {
+            // Only a genuine win counts — everything ties when nothing differs.
+            const leads =
+              statLeaders !== undefined && statLeaders[stat.statHash] === stat.value;
+
+            return (
+              <div key={stat.statHash} className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-400 w-24 text-right shrink-0">
+                  {stat.name}
+                </span>
+                <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${statBarColor(stat.value)}`}
+                    style={{ width: `${Math.min(stat.value, 100)}%` }}
+                  />
+                </div>
+                <span
+                  className={`text-[10px] w-6 text-right tabular-nums ${
+                    leads ? "text-blue-300 font-semibold" : "text-gray-400"
+                  }`}
+                  title={leads ? "Best in this comparison group" : undefined}
+                >
+                  {stat.value}
+                </span>
               </div>
-              <span className="text-[10px] text-gray-400 w-6 text-right tabular-nums">
-                {stat.value}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -268,6 +291,21 @@ export default function WeaponCard({ roll, recommendation }: WeaponCardProps) {
           );
         })}
       </div>
+
+      {/* Why this verdict */}
+      {roll.reasons.length > 0 && (
+        <ul className="mt-3 pt-3 border-t border-gray-800 space-y-1">
+          {roll.reasons.map((reason) => (
+            <li
+              key={reason}
+              className="text-[11px] text-gray-400 leading-snug flex gap-1.5"
+            >
+              <span className="text-gray-600 shrink-0">&bull;</span>
+              <span>{reason}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Wishlist Tags & Notes */}
       {((roll.wishlistTags?.length ?? 0) > 0 || roll.wishlistNotes.length > 0) && (

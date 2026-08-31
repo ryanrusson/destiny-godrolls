@@ -21,28 +21,28 @@ export default function StatsBar({ analysis, mode = "weapons" }: StatsBarProps) 
       bg: "bg-gray-800",
     },
     {
-      label: "Duplicate Groups",
-      value: analysis.duplicateGroups.length,
-      color: "text-blue-400",
-      bg: "bg-blue-900/30",
-    },
-    {
       label: "God Rolls",
       value: analysis.godRollCount,
       color: "text-yellow-400",
       bg: "bg-yellow-900/30",
     },
     {
-      label: "Safe to Junk",
-      value: analysis.junkCount,
-      color: "text-red-400",
-      bg: "bg-red-900/30",
-    },
-    {
       label: "Keep",
       value: analysis.keepCount,
       color: "text-green-400",
       bg: "bg-green-900/30",
+    },
+    {
+      label: "Needs Review",
+      value: analysis.reviewCount,
+      color: "text-amber-400",
+      bg: "bg-amber-900/30",
+    },
+    {
+      label: "Safe to Junk",
+      value: analysis.junkCount,
+      color: "text-red-400",
+      bg: "bg-red-900/30",
     },
     {
       label: "Not in Wishlist",

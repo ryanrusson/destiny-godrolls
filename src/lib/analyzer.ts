@@ -1,12 +1,18 @@
 import { ProfileResponse, bungieIconUrl } from "./bungie-api";
-import { getItemDefinitions, isWeapon, isLegendaryOrExotic } from "./manifest";
+import {
+  getItemDefinitions,
+  getWeaponSlot,
+  isExotic,
+  isWeapon,
+  isLegendaryOrExotic,
+} from "./manifest";
 import { fetchWishlist, checkWishlistMatch } from "./wishlist";
 import { scoreFallbackRoll } from "./perk-ratings";
 import { analyzeArmor } from "./armor-analyzer";
+import { compareWeapons } from "./weapon-comparison";
 import {
   WeaponRoll,
   WeaponStat,
-  DuplicateGroup,
   VaultAnalysis,
   ItemLocation,
   ManifestItemDefinition,
@@ -252,106 +258,26 @@ export async function analyzeProfile(
       fallbackScore,
       fallbackMaxScore,
       usedFallback,
+      isExotic: isExotic(itemDef),
+      slot: getWeaponSlot(itemDef),
+      frame: perks.find((c) => c.columnIndex === 0)?.selectedPerk?.name,
+      // Filled in by compareWeapons() once every roll has been collected.
+      score: 0,
+      verdict: "review",
+      reasons: [],
+      suggestedTag: "archive",
     });
   }
 
-  // Group by weapon hash to find duplicates
-  const grouped = new Map<number, WeaponRoll[]>();
-  for (const roll of weaponRolls) {
-    const existing = grouped.get(roll.itemHash) || [];
-    existing.push(roll);
-    grouped.set(roll.itemHash, existing);
-  }
-
-  // Build weapon groups (both duplicates and singles)
-  const duplicateGroups: DuplicateGroup[] = [];
-  const allWeaponGroups: DuplicateGroup[] = [];
-
-  for (const [weaponHash, rolls] of grouped) {
-    const isDuplicate = rolls.length >= 2;
-
-    const keepIds: string[] = [];
-    const junkIds: string[] = [];
-
-    for (const roll of rolls) {
-      if (roll.isGodRoll || roll.isRecommended || roll.location === "equipped") {
-        keepIds.push(roll.itemInstanceId);
-      } else {
-        junkIds.push(roll.itemInstanceId);
-      }
-    }
-
-    // Always keep at least one copy
-    if (keepIds.length === 0 && rolls.length > 0) {
-      // Pick the best roll to keep: highest matched perks, then fallback score, then power
-      rolls.sort((a, b) => {
-        if (a.matchedPerkCount !== b.matchedPerkCount)
-          return b.matchedPerkCount - a.matchedPerkCount;
-        if ((a.fallbackScore ?? 0) !== (b.fallbackScore ?? 0))
-          return (b.fallbackScore ?? 0) - (a.fallbackScore ?? 0);
-        return b.powerLevel - a.powerLevel;
-      });
-      keepIds.push(rolls[0].itemInstanceId);
-      const junkIndex = junkIds.indexOf(rolls[0].itemInstanceId);
-      if (junkIndex > -1) junkIds.splice(junkIndex, 1);
-    }
-
-    const keepSet = new Set(keepIds);
-
-    // Sort rolls: keeps first (god rolls > recommended > best fallback), then junk
-    rolls.sort((a, b) => {
-      const aKeep = keepSet.has(a.itemInstanceId);
-      const bKeep = keepSet.has(b.itemInstanceId);
-      if (aKeep !== bKeep) return aKeep ? -1 : 1;
-      if (a.isGodRoll !== b.isGodRoll) return a.isGodRoll ? -1 : 1;
-      if (a.isRecommended !== b.isRecommended) return a.isRecommended ? -1 : 1;
-      if (a.matchedPerkCount !== b.matchedPerkCount)
-        return b.matchedPerkCount - a.matchedPerkCount;
-      if ((a.fallbackScore ?? 0) !== (b.fallbackScore ?? 0))
-        return (b.fallbackScore ?? 0) - (a.fallbackScore ?? 0);
-      return b.powerLevel - a.powerLevel;
-    });
-
-    const group: DuplicateGroup = {
-      weaponHash,
-      weaponName: rolls[0].name,
-      weaponIcon: rolls[0].icon,
-      weaponType: rolls[0].typeName,
-      damageType: rolls[0].damageType,
-      rolls,
-      keepRecommendations: keepIds,
-      junkRecommendations: junkIds,
-    };
-
-    allWeaponGroups.push(group);
-    if (isDuplicate) {
-      duplicateGroups.push(group);
-    }
-  }
-
-  // Sort groups by number of junkable items (most junkable first)
-  duplicateGroups.sort(
-    (a, b) => b.junkRecommendations.length - a.junkRecommendations.length
-  );
-
-  // Sort all weapons alphabetically by name
-  allWeaponGroups.sort((a, b) => a.weaponName.localeCompare(b.weaponName));
+  // Compare rolls against duplicates *and* similar weapons filling the same
+  // role, then build the groups for every comparison scope.
+  const comparison = compareWeapons(weaponRolls);
 
   const armor = analyzeArmor(profileData, itemDefs);
 
   return {
     totalWeapons: weaponRolls.length,
-    duplicateGroups,
-    allWeaponGroups,
-    godRollCount: weaponRolls.filter((w) => w.isGodRoll).length,
-    junkCount: duplicateGroups.reduce(
-      (sum, g) => sum + g.junkRecommendations.length,
-      0
-    ),
-    keepCount: duplicateGroups.reduce(
-      (sum, g) => sum + g.keepRecommendations.length,
-      0
-    ),
+    ...comparison,
     armor,
   };
 }
